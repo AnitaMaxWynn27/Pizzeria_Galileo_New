@@ -11,7 +11,7 @@ services:
       - /usr/src/app/node_modules # Mantiene i node_modules del container
     environment:
       - NODE_ENV=development
-      - MONGO_URI=mongodb://mongo:27017/pizzeria
+      - MONGO_URI=mongodb+srv://andrea:Nmpl152IoExZy8a7@pizzeria.5ptphrj.mongodb.net/?retryWrites=true&w=majority&appName=Pizzeria
       - JWT_SECRET=qM%86EuLtjTboEwrRKq!5exwh$qASYPUUSh5qAV8Sci#mLcsgjFf43r$o2Tzu2bV%AaM^$v4UKcB3vrTkoQN5uNQPiaag$RFXPYpadQz5yCkZkqMif%&$yafrhwoT3p# # CAMBIA QUESTO!
     depends_on:
       - mongo
