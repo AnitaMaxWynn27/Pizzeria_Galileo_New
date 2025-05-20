@@ -61,6 +61,7 @@ const uploadMenuItemImage = multer({
 mongoose.connect(MONGO_URI)
     .then(() => {
         console.log('Connesso a MongoDB con successo!');
+        seedDatabase();
     })
     .catch(err => {
         console.error('Errore di connessione a MongoDB:', err);
@@ -151,49 +152,118 @@ const orderSchema = new mongoose.Schema({
 });
 const Order = mongoose.model('Order', orderSchema);
 
-/*
-// --- Dati Iniziali e Costanti (Menu) ---
-const initialMenuData = [
-    {
-        itemId: 'p1', name: 'Margherita', category: 'Pizze Rosse', price: 7.50,
-        description: 'Pomodoro San Marzano DOP, Fiordilatte, Basilico fresco, Olio EVO',
-        image: 'https://placehold.co/300x200/FFC107/000000?text=Margherita',
-        customizableOptions: [
-            { name: 'Senza Mozzarella', priceChange: -0.50 },
-            { name: 'Doppio Basilico', priceChange: 0.30 }
-        ]
-    },
-    {
-        itemId: 'p2', name: 'Diavola', category: 'Pizze Rosse', price: 8.50,
-        description: 'Pomodoro San Marzano DOP, Fiordilatte, Salame piccante',
-        image: 'https://placehold.co/300x200/FF5722/FFFFFF?text=Diavola',
-        customizableOptions: [
-            { name: 'Extra Salame Piccante', priceChange: 1.50 },
-            { name: 'Senza Fiordilatte', priceChange: -1.00 }
-        ]
-    },
-    // ... altri item con eventuali customizableOptions
-    { itemId: 'p3', name: 'Capricciosa', category: 'Pizze Rosse', price: 9.50, description: 'Pomodoro, Mozzarella, Prosciutto cotto, Funghi, Carciofini, Olive', image: '/images/Capricciosa.png' },
-    { itemId: 'p4', name: 'Quattro Formaggi', category: 'Pizze Bianche', price: 9.00, description: 'Fiordilatte, Gorgonzola DOP, Fontina, Parmigiano Reggiano', image: '/images/QuattroFormaggi.png' },
-    { itemId: 'p5', name: 'Boscaiola', category: 'Pizze Bianche', price: 10.00, description: 'Mozzarella, Salsiccia fresca, Funghi porcini', image: '/images/Boscaiola' },
-    { itemId: 'd1', name: 'Acqua Naturale', category: 'Bibite', price: 1.50, description: 'Bottiglia 50cl', image: '/images/Acqua.png' },
-    { itemId: 'd2', name: 'Coca Cola', category: 'Bibite', price: 2.50, description: 'Lattina 33cl', image: '/images/CocaCola.png' },
-    { itemId: 'd3', name: 'Birra Artigianale', category: 'Bibite', price: 4.50, description: 'Bottiglia 33cl - Chiara', image: '/images/Birra.png' },
+const initialCategories = [
+    { name: 'Pizze Rosse', description: 'Le classiche pizze con base pomodoro.' },
+    { name: 'Pizze Bianche', description: 'Pizze senza base pomodoro, con mozzarella e altri ingredienti.' },
+    { name: 'Bibite', description: 'Bevande analcoliche e birre.' }
+    // Aggiungi altre categorie se necessario, es. Dessert
 ];
 
-async function seedMenuItems() {
+const initialMenuItemsData = [
+    {
+        name: 'Margherita', categoryName: 'Pizze Rosse', price: 7.50,
+        description: 'Pomodoro San Marzano DOP, Fiordilatte, Basilico fresco, Olio EVO',
+        image: '/images/Margherita.png', // Percorso relativo alla cartella public
+        available: true,
+    },
+    {
+        name: 'Diavola', categoryName: 'Pizze Rosse', price: 8.50,
+        description: 'Pomodoro San Marzano DOP, Fiordilatte, Salame piccante',
+        image: '/images/Diavola.png',
+        available: true,
+    },
+    {
+        name: 'Capricciosa', categoryName: 'Pizze Rosse', price: 9.50,
+        description: 'Pomodoro, Mozzarella, Prosciutto cotto, Funghi, Carciofini, Olive',
+        image: '/images/Capricciosa.png',
+        available: true,
+    },
+    {
+        name: 'Quattro Formaggi', categoryName: 'Pizze Bianche', price: 9.00,
+        description: 'Fiordilatte, Gorgonzola DOP, Fontina, Parmigiano Reggiano',
+        image: '/images/QuattroFormaggi.png',
+        available: true,
+    },
+    {
+        name: 'Boscaiola', categoryName: 'Pizze Bianche', price: 10.00,
+        description: 'Mozzarella, Salsiccia fresca, Funghi porcini',
+        image: '/images/Boscaiola.png', // Assumendo che tu abbia questa immagine in public/images
+        available: true,
+    },
+    {
+        name: 'Acqua Naturale', categoryName: 'Bibite', price: 1.50,
+        description: 'Bottiglia 50cl',
+        image: '/images/Acqua.png',
+        available: true,
+    },
+    {
+        name: 'Coca Cola', categoryName: 'Bibite', price: 2.50,
+        description: 'Lattina 33cl',
+        image: '/images/CocaCola.jpg', // Nota: questa è .jpg come da tuo screenshot
+        available: true,
+    },
+    {
+        name: 'Birra Artigianale', categoryName: 'Bibite', price: 4.50,
+        description: 'Bottiglia 33cl - Chiara',
+        image: '/images/Birra.png',
+        available: true,
+    }
+];
+
+async function seedDatabase() {
     try {
-        const count = await MenuItem.countDocuments();
-        if (count === 0) {
-            console.log('Nessun articolo nel menu trovato, popolo il database con i dati iniziali...');
-            await MenuItem.insertMany(initialMenuData);
-            console.log('Menu popolato con successo.');
+        // Seeding Categorie
+        const categoryCount = await Category.countDocuments();
+        if (categoryCount === 0) {
+            console.log('Nessuna categoria trovata, popolo con i dati iniziali...');
+            await Category.insertMany(initialCategories);
+            console.log('Categorie popolate con successo.');
+        } else {
+            console.log('Categorie già presenti, skipping seeding categorie.');
         }
+
+        // Seeding Articoli Menu
+        const menuItemCount = await MenuItem.countDocuments();
+        if (menuItemCount === 0) {
+            console.log('Nessun articolo nel menu trovato, popolo con i dati iniziali...');
+            
+            const categoriesFromDB = await Category.find();
+            const categoryMap = {};
+            categoriesFromDB.forEach(cat => {
+                categoryMap[cat.name] = cat._id;
+            });
+
+            const menuItemsToInsert = initialMenuItemsData.map(item => {
+                const categoryId = categoryMap[item.categoryName];
+                if (!categoryId) {
+                    console.warn(`Categoria "${item.categoryName}" non trovata per l'articolo "${item.name}". L'articolo sarà saltato.`);
+                    return null; // Salta questo articolo se la categoria non esiste
+                }
+                return {
+                    name: item.name,
+                    category: categoryId,
+                    price: item.price,
+                    description: item.description,
+                    image: item.image,
+                    available: item.available,
+                    customizableOptions: item.customizableOptions || []
+                };
+            }).filter(item => item !== null); // Rimuovi eventuali item saltati
+
+            if (menuItemsToInsert.length > 0) {
+                await MenuItem.insertMany(menuItemsToInsert);
+                console.log(`${menuItemsToInsert.length} articoli del menu popolati con successo.`);
+            } else {
+                console.log("Nessun articolo del menu da inserire dopo il mapping delle categorie.");
+            }
+        } else {
+            console.log('Articoli del menu già presenti, skipping seeding articoli.');
+        }
+
     } catch (error) {
-        console.error('Errore durante il popolamento del menu:', error);
+        console.error('Errore durante il popolamento del database:', error);
     }
 }
-*/
 // --- Middleware di Autenticazione ---
 const authMiddleware = (req, res, next) => {
     const authHeader = req.header('Authorization');
