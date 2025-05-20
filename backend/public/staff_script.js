@@ -136,25 +136,26 @@ const staffApp = {
     /**
      * Resetta il form di gestione menu al suo stato iniziale (per aggiunta).
      */
-    resetMenuItemForm: function () {
+    resetMenuItemForm: function() {
         const form = document.getElementById('menu-item-form');
-        if (form) form.reset();
-
-        const editIdInput = document.getElementById('edit-menu-item-id');
-        if (editIdInput) editIdInput.value = '';
-
-        const formTitle = document.getElementById('menu-item-form-title');
-        if (formTitle) formTitle.textContent = 'Aggiungi Nuovo Articolo';
-
-        const saveButton = document.getElementById('save-menu-item-btn');
-        if (saveButton) saveButton.textContent = 'Salva Articolo';
-
-        const cancelButton = document.getElementById('cancel-edit-menu-item-btn');
-        if (cancelButton) cancelButton.style.display = 'none';
-
-        const itemIdInput = document.getElementById('menu-item-itemId');
-        if (itemIdInput) itemIdInput.disabled = false;
-
+        if (form) form.reset(); // Resetta tutti i campi, incluso l'input file
+        
+        document.getElementById('edit-menu-item-id').value = '';
+        document.getElementById('menu-item-form-title').textContent = 'Aggiungi Nuovo Articolo';
+        document.getElementById('save-menu-item-btn').textContent = 'Salva Articolo';
+        document.getElementById('cancel-edit-menu-item-btn').style.display = 'none';
+        document.getElementById('menu-item-itemId').disabled = false;
+        
+        // Nascondi e resetta l'anteprima dell'immagine
+        const imagePreviewContainer = document.getElementById('current-image-preview-container');
+        const imagePreview = document.getElementById('current-image-preview');
+        if (imagePreviewContainer) imagePreviewContainer.style.display = 'none';
+        if (imagePreview) imagePreview.src = '#';
+        
+        // Assicurati che il campo URL sia pulito (form.reset() dovrebbe farlo, ma per sicurezza)
+        const imageUrlInput = document.getElementById('menu-item-image-url');
+        if(imageUrlInput) imageUrlInput.value = '';
+        
         staffApp.editingMenuItemId = null;
     },
 
@@ -225,47 +226,76 @@ const staffApp = {
      * Gestisce il salvataggio (aggiunta o modifica) di un articolo del menu.
      * @param {Event} event - L'evento di submit del form.
      */
-    handleSaveMenuItem: async function (event) {
+    handleSaveMenuItem: async function(event) {
         event.preventDefault();
         const form = document.getElementById('menu-item-form');
-        const mongoId = document.getElementById('edit-menu-item-id').value; // _id di MongoDB
+        const mongoId = document.getElementById('edit-menu-item-id').value;
+        
+        const formData = new FormData(form); // FormData gestirà automaticamente enctype="multipart/form-data"
 
-        const formData = new FormData(form);
-        const itemData = Object.fromEntries(formData.entries());
-        itemData.price = parseFloat(itemData.price);
-        itemData.available = document.getElementById('menu-item-available').checked;
-
-        // ---> INIZIO MODIFICA CONSIGLIATA <---
-        if (itemData.image && itemData.image.startsWith('images/')) {
-            // Se l'utente scrive "images/nome.jpg" lo trasforma in "/images/nome.jpg"
-            itemData.image = '/' + itemData.image;
-        } else if (itemData.image && !itemData.image.startsWith('/')) {
-            // Se l'utente scrive solo "nome.jpg" (improbabile dato il placeholder, ma per sicurezza)
-            // e vuoi che vada in /images/, potresti fare:
-            // itemData.image = '/images/' + itemData.image;
-            // Tuttavia, dato il placeholder, è più probabile il caso sopra.
-            // Se il placeholder è già "/images/...", questa normalizzazione potrebbe non essere strettamente necessaria
-            // se gli utenti lo seguono, ma è una buona pratica per robustezza.
+        // Gestione del checkbox 'available'
+        // FormData includerà 'available' con valore 'true' solo se il checkbox è checkato
+        // e se il checkbox ha un attributo `value="true"`. Altrimenti, potrebbe inviare 'on'.
+        // Se non è checkato, non sarà presente in formData.
+        // Per consistenza, il backend ora si aspetta 'true' o true, e gestisce 'false' se non presente.
+        if (!document.getElementById('menu-item-available').checked) {
+            formData.set('available', 'false'); // Assicura che 'false' sia inviato se non checkato
+        } else {
+            formData.set('available', 'true'); // Assicura che 'true' sia inviato se checkato
         }
-        const url = mongoId
-            ? `${staffApp.API_BASE_URL}/api/menu/items/${mongoId}`
+
+
+        // Il campo 'imageFile' (dal type="file") sarà gestito da FormData.
+        // Il campo 'image' (per l'URL testuale) sarà anch'esso gestito da FormData.
+        // Il backend darà priorità a 'imageFile' se presente.
+
+        // Rimuovi il campo imageFile se non è stato selezionato alcun file,
+        // per evitare di inviare un "file vuoto" che potrebbe causare problemi con multer o la logica del backend.
+        const imageFileInput = document.getElementById('menu-item-image-file');
+        if (imageFileInput.files.length === 0) {
+            formData.delete('imageFile');
+        }
+        
+        // Se l'input 'imageFile' ha un file, e l'utente *non* ha toccato l'URL dell'immagine esistente,
+        // potresti voler svuotare il campo 'image' (URL) per dare priorità al file.
+        // Tuttavia, la logica backend attuale già favorisce `req.file`.
+        // Se l'utente ha specificato un nuovo file E un nuovo URL testuale, il file avrà la precedenza.
+        // Se l'utente vuole *rimuovere* l'immagine, deve svuotare l'input URL e non caricare un file.
+
+
+        const url = mongoId 
+            ? `${staffApp.API_BASE_URL}/api/menu/items/${mongoId}` 
             : `${staffApp.API_BASE_URL}/api/menu/items`;
         const method = mongoId ? 'PUT' : 'POST';
 
         try {
             const response = await fetch(url, {
                 method: method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(itemData)
+                body: formData // Invia FormData direttamente. NON impostare Content-Type header.
             });
-            const result = await response.json();
-            if (!response.ok) {
-                throw new Error(result.message || `Errore HTTP: ${response.status}`);
-            }
 
+            const resultText = await response.text(); // Leggi la risposta come testo prima
+            let result;
+            try {
+                result = JSON.parse(resultText); // Prova a fare il parsing come JSON
+            } catch (e) {
+                // Se il parsing fallisce, la risposta potrebbe non essere JSON (es. errore HTML o testo semplice)
+                console.error("Risposta non JSON dal server:", resultText);
+                throw new Error(`Errore del server: ${response.status} - ${resultText.substring(0,100)}`);
+            }
+            
+            if (!response.ok) {
+                 // Se result.errors è un array (da express-validator), uniscili. Altrimenti usa result.message.
+                const errorMessage = Array.isArray(result.errors) 
+                    ? result.errors.map(err => err.msg || JSON.stringify(err)).join(', ') 
+                    : (result.message || `Errore HTTP: ${response.status}`);
+                throw new Error(errorMessage);
+            }
+            
             staffApp.displayMessage(`Articolo menu ${mongoId ? 'modificato' : 'aggiunto'} con successo!`, 'success', document.getElementById('message-area-staff'));
-            staffApp.toggleMenuItemForm(); // Chiude e resetta il form
+            staffApp.toggleMenuItemForm(); // Chiude il form
             await staffApp.loadAndRenderMenuItems(); // Ricarica la lista
+            // form.reset(); // Spostato in toggleMenuItemForm/resetMenuItemForm per coerenza
         } catch (error) {
             console.error("Errore salvataggio articolo menu:", error);
             staffApp.displayMessage(`Errore salvataggio: ${error.message}`, 'error', document.getElementById('message-area-staff'));
@@ -276,14 +306,17 @@ const staffApp = {
      * Pre-compila il form per la modifica di un articolo esistente.
      * @param {Event} event - L'evento click sul pulsante "Modifica".
      */
-    handleEditMenuItem: async function (event) {
-        const button = event.currentTarget; // Usa currentTarget per l'elemento a cui è attaccato il listener
+    handleEditMenuItem: async function(event) {
+        const button = event.currentTarget;
         const mongoId = button.dataset.id;
         staffApp.editingMenuItemId = mongoId;
 
         try {
+            // Non è necessario fare una fetch qui se la tabella è già popolata con tutti i dati necessari,
+            // inclusi _id e image. Se `loadAndRenderMenuItems` già carica tutto, possiamo prendere i dati dalla riga.
+            // Per ora, manteniamo la fetch per coerenza con il codice precedente, ma potrebbe essere ottimizzata.
             const response = await fetch(`${staffApp.API_BASE_URL}/api/menu/all-items`);
-            if (!response.ok) throw new Error('Impossibile recuperare i dettagli dell\'articolo per la modifica.');
+            if (!response.ok) throw new Error('Impossibile recuperare i dettagli dell\'articolo.');
             const allItems = await response.json();
             const itemToEdit = allItems.find(item => item._id === mongoId);
 
@@ -291,37 +324,45 @@ const staffApp = {
                 staffApp.displayMessage('Articolo non trovato per la modifica.', 'error', document.getElementById('message-area-staff'));
                 return;
             }
-
+            
             const formContainer = document.getElementById('menu-item-form-container');
             const formTitle = document.getElementById('menu-item-form-title');
             const toggleButton = document.getElementById('toggle-add-menu-item-form-btn');
 
+            // Popola il form
             formTitle.textContent = 'Modifica Articolo Menu';
             document.getElementById('edit-menu-item-id').value = itemToEdit._id;
             document.getElementById('menu-item-itemId').value = itemToEdit.itemId;
-            document.getElementById('menu-item-itemId').disabled = false; // Permetti modifica itemId, l'API ha controlli
+            document.getElementById('menu-item-itemId').disabled = false;
             document.getElementById('menu-item-name').value = itemToEdit.name;
             document.getElementById('menu-item-category').value = itemToEdit.category;
             document.getElementById('menu-item-price').value = itemToEdit.price.toFixed(2);
             document.getElementById('menu-item-description').value = itemToEdit.description || '';
-            document.getElementById('menu-item-image').value = itemToEdit.image || '';
-            document.getElementById('menu-item-available').checked = itemToEdit.available;
+            
+            // Gestione immagine per la modifica
+            document.getElementById('menu-item-image-url').value = itemToEdit.image || ''; // Mostra l'URL/percorso esistente
+            document.getElementById('menu-item-image-file').value = ''; // Resetta il campo file
 
+            const imagePreviewContainer = document.getElementById('current-image-preview-container');
+            const imagePreview = document.getElementById('current-image-preview');
+            if (itemToEdit.image) {
+                imagePreview.src = itemToEdit.image.startsWith('http') ? itemToEdit.image : `${staffApp.API_BASE_URL}${itemToEdit.image}`; // Assumendo API_BASE_URL sia vuoto o il dominio
+                imagePreviewContainer.style.display = 'block';
+            } else {
+                imagePreviewContainer.style.display = 'none';
+            }
+
+            document.getElementById('menu-item-available').checked = itemToEdit.available;
+            
             document.getElementById('save-menu-item-btn').textContent = 'Salva Modifiche';
             document.getElementById('cancel-edit-menu-item-btn').style.display = 'inline-block';
-
+            
             if (formContainer.style.display === 'none') {
                 formContainer.style.display = 'block';
-                toggleButton.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 inline-block mr-1">
-                      <path fill-rule="evenodd" d="M4 10a.75.75 0 01.75-.75h10.5a.75.75 0 010 1.5H4.75A.75.75 0 014 10z" clip-rule="evenodd" />
-                    </svg>
-                    Nascondi Form Articolo`;
+                 toggleButton.innerHTML = `Nascondi Form Articolo`;
                 toggleButton.classList.replace('btn-green', 'btn-outline-secondary');
             }
-            // Scrolla al form per visibilità
             formContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
 
         } catch (error) {
             console.error("Errore preparazione modifica articolo:", error);

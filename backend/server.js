@@ -7,6 +7,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult, param } = require('express-validator');
 const crypto = require('crypto'); // Per generare token di reset password
+const multer = require('multer'); // <--- AGGIUNGI MULTER
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -18,10 +20,42 @@ if (!JWT_SECRET) {
     process.exit(1);
 }
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+// Nuova rotta per servire le immagini caricate
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // <--- NUOVA RIGA
+
+// --- Configurazione Multer ---
+const UPLOADS_MENU_ITEMS_DIR = path.join(__dirname, 'uploads', 'menu_items');
+// Crea la cartella se non esiste
+if (!fs.existsSync(UPLOADS_MENU_ITEMS_DIR)) {
+    fs.mkdirSync(UPLOADS_MENU_ITEMS_DIR, { recursive: true });
+}
+
+const menuItemsStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, UPLOADS_MENU_ITEMS_DIR);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const imageFileFilter = (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+        cb(null, true);
+    } else {
+        cb(new Error('Solo file immagine sono permessi!'), false);
+    }
+};
+
+const uploadMenuItemImage = multer({
+    storage: menuItemsStorage,
+    fileFilter: imageFileFilter,
+    limits: { fileSize: 5 * 1024 * 1024 } // Limite di 5MB
+});
 
 // --- Connessione a MongoDB ---
 mongoose.connect(MONGO_URI)
@@ -387,66 +421,147 @@ app.get('/api/menu/all-items', /* authMiddleware, TODO: Proteggere */ async (req
     } catch (error) { res.status(500).json({ message: "Errore recupero articoli menu per staff", error: error.message }); }
 });
 
-// POST /api/menu/items (per staff)
-app.post('/api/menu/items', /* authMiddleware, */ [
-    body('itemId', 'itemId è obbligatorio').not().isEmpty().trim(),
-    body('name', 'Nome è obbligatorio').not().isEmpty().trim(),
-    body('category', 'Categoria è obbligatoria').not().isEmpty().trim(),
-    body('price', 'Prezzo è obbligatorio e deve essere un numero').isNumeric(),
-    // Aggiungere validazione per customizableOptions se inviate
+// POST /api/menu/items
+app.post('/api/menu/items', /* authMiddleware, */ uploadMenuItemImage.single('imageFile'), [
+    body('itemId').not().isEmpty().trim().withMessage('itemId è obbligatorio'),
+    body('name').not().isEmpty().trim().withMessage('Nome è obbligatorio'),
+    body('category').not().isEmpty().trim().withMessage('Categoria è obbligatoria'),
+    body('price').isNumeric().withMessage('Prezzo è obbligatorio e deve essere un numero'),
 ], async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    if (!errors.isEmpty()) {
+        if (req.file) fs.unlinkSync(req.file.path); // Rimuovi file se validazione fallisce
+        return res.status(400).json({ errors: errors.array() });
+    }
+
     try {
-        const { itemId, name, category, price, description, image, available, customizableOptions } = req.body;
-        const newItem = new MenuItem({ itemId, name, category, price, description, image, available, customizableOptions });
+        const { itemId, name, category, price, description, available } = req.body;
+        let imagePath = req.body.image; // Per URL manuale come fallback
+
+        if (req.file) {
+            imagePath = `/uploads/menu_items/${req.file.filename}`;
+        }
+
+        const newItemData = {
+            itemId, name, category, price, description,
+            image: imagePath,
+            available: available === 'true' || available === true, // Gestisce stringa da FormData
+        };
+        if (req.body.customizableOptions) {
+             try {
+                newItemData.customizableOptions = JSON.parse(req.body.customizableOptions);
+            } catch (e) {
+                console.warn("Opzioni personalizzabili non valide:", req.body.customizableOptions);
+                newItemData.customizableOptions = [];
+            }
+        }
+
+
+        const newItem = new MenuItem(newItemData);
         await newItem.save();
         res.status(201).json(newItem);
     } catch (error) {
+        if (req.file) fs.unlinkSync(req.file.path); // Rimuovi file se salvataggio DB fallisce
         if (error.code === 11000) return res.status(409).json({ message: `L'articolo con itemId '${error.keyValue.itemId}' esiste già.` });
-        res.status(500).json({ message: "Errore aggiunta articolo al menu", error: error.message });
+        console.error("Errore POST /api/menu/items:", error);
+        res.status(500).json({ message: "Errore aggiunta articolo", error: error.message });
     }
 });
 
-// PUT /api/menu/items/:id (per staff)
-app.put('/api/menu/items/:id', /* authMiddleware, */ [
-    // Aggiungere validatori
+// PUT /api/menu/items/:id
+app.put('/api/menu/items/:id', /* authMiddleware, */ uploadMenuItemImage.single('imageFile'), [
+    // validatori opzionali
 ], async (req, res) => {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        if (req.file) fs.unlinkSync(req.file.path);
+        return res.status(400).json({ message: "ID articolo non valido." });
+    }
+
     try {
-        const { id } = req.params; // Questo è _id di MongoDB
-        const { name, category, price, description, image, available, itemId, customizableOptions } = req.body;
-        if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "ID articolo non valido." });
-        
-        if (itemId) { // Se si tenta di modificare itemId, verifica unicità
-            const existingItemWithNewItemId = await MenuItem.findOne({ itemId: itemId, _id: { $ne: id } });
-            if (existingItemWithNewItemId) return res.status(409).json({ message: `L'itemId '${itemId}' è già utilizzato da un altro articolo.` });
+        const itemToUpdate = await MenuItem.findById(id);
+        if (!itemToUpdate) {
+            if (req.file) fs.unlinkSync(req.file.path);
+            return res.status(404).json({ message: "Articolo non trovato." });
         }
 
-        const updatedItem = await MenuItem.findByIdAndUpdate(id,
-            { name, category, price, description, image, available, itemId, customizableOptions },
-            { new: true, runValidators: true }
-        );
-        if (!updatedItem) return res.status(404).json({ message: "Articolo del menu non trovato." });
-        res.json(updatedItem);
-    } catch (error) {
-        if (error.code === 11000 && error.keyPattern && error.keyPattern.itemId) {
-             return res.status(409).json({ message: `L'itemId '${error.keyValue.itemId}' è già utilizzato da un altro articolo.` });
+        const { name, category, price, description, available, itemId } = req.body;
+        let imagePath = itemToUpdate.image; // Mantiene l'immagine esistente di default
+        let newImageUrlProvided = req.body.image !== undefined && req.body.image !== itemToUpdate.image;
+
+
+        if (req.file) { // Se un nuovo file è caricato
+            if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/')) {
+                const oldFilePath = path.join(__dirname, itemToUpdate.image);
+                if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+            }
+            imagePath = `/uploads/menu_items/${req.file.filename}`;
+        } else if (newImageUrlProvided) { // Se è stato fornito un nuovo URL testuale (o un URL vuoto per rimuovere)
+             if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/') && req.body.image === '') { // L'utente ha cancellato l'URL di un file caricato
+                const oldFilePath = path.join(__dirname, itemToUpdate.image);
+                if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+             }
+             imagePath = req.body.image; // Usa il nuovo URL (che potrebbe essere vuoto)
         }
-        res.status(500).json({ message: "Errore modifica articolo menu", error: error.message });
+        // Se né req.file né req.body.image sono forniti (o req.body.image è lo stesso), imagePath rimane l'originale.
+
+        const updateData = {
+            name, category, price, description,
+            available: available === 'true' || available === true,
+            itemId: itemId || itemToUpdate.itemId, // Mantieni vecchio itemId se non fornito
+            image: imagePath
+        };
+
+        if (req.body.customizableOptions) {
+             try {
+                updateData.customizableOptions = JSON.parse(req.body.customizableOptions);
+            } catch (e) {
+                console.warn("Opzioni personalizzabili non valide in PUT:", req.body.customizableOptions);
+                // Mantieni quelle esistenti o imposta a array vuoto
+                updateData.customizableOptions = itemToUpdate.customizableOptions;
+            }
+        }
+
+
+        const updatedItem = await MenuItem.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
+        res.json(updatedItem);
+
+    } catch (error) {
+        if (req.file) fs.unlinkSync(req.file.path);
+        if (error.code === 11000 && error.keyPattern && error.keyPattern.itemId) {
+             return res.status(409).json({ message: `L'itemId '${error.keyValue.itemId}' è già utilizzato.` });
+        }
+        console.error(`Errore PUT /api/menu/items/${id}:`, error);
+        res.status(500).json({ message: "Errore modifica articolo", error: error.message });
     }
 });
 
-// DELETE /api/menu/items/:id (per staff) (come prima)
-app.delete('/api/menu/items/:id', /* authMiddleware, */ async (req, res) => { 
+// DELETE /api/menu/items/:id
+app.delete('/api/menu/items/:id', /* authMiddleware, */ async (req, res) => {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "ID articolo non valido." });
+    }
     try {
-        const { id } = req.params;
-        if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "ID articolo non valido." });
         const deletedItem = await MenuItem.findByIdAndDelete(id);
-        if (!deletedItem) return res.status(404).json({ message: "Articolo del menu non trovato." });
-        res.json({ message: "Articolo del menu eliminato con successo.", deletedItem });
-    } catch (error) { res.status(500).json({ message: "Errore eliminazione articolo menu", error: error.message }); }
+        if (!deletedItem) {
+            return res.status(404).json({ message: "Articolo non trovato." });
+        }
+        if (deletedItem.image && deletedItem.image.startsWith('/uploads/menu_items/')) {
+            const filePath = path.join(__dirname, deletedItem.image);
+            if (fs.existsSync(filePath)) {
+                fs.unlink(filePath, (err) => {
+                    if (err) console.error("Errore eliminazione file immagine associata:", err);
+                    else console.log(`File immagine ${filePath} eliminato.`);
+                });
+            }
+        }
+        res.json({ message: "Articolo eliminato con successo.", deletedItem });
+    } catch (error) {
+        console.error(`Errore DELETE /api/menu/items/${id}:`, error);
+        res.status(500).json({ message: "Errore eliminazione articolo", error: error.message });
+    }
 });
-
 
 // --- API Endpoints Ordini (Aggiornati per Personalizzazioni) ---
 // POST /api/orders
