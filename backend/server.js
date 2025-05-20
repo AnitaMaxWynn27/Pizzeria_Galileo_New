@@ -13,7 +13,7 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/pizzeria';
-const JWT_SECRET = process.env.JWT_SECRET; 
+const JWT_SECRET = process.env.JWT_SECRET;
 console.log("JWT_SECRET in server.js:", JWT_SECRET ? "Definito" : "NON DEFINITO!!!"); // Aggiungi questo
 if (!JWT_SECRET) {
     console.error("FATAL ERROR: JWT_SECRET non è definito. Impostalo nelle variabili d'ambiente.");
@@ -91,12 +91,18 @@ const userSchema = new mongoose.Schema({
     }]
 });
 
-userSchema.methods.comparePassword = async function(candidatePassword) {
+userSchema.methods.comparePassword = async function (candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
 };
 const User = mongoose.model('User', userSchema);
 
-
+const categorySchema = new mongoose.Schema({
+    name: { type: String, required: true, unique: true, trim: true },
+    description: { type: String, trim: true, default: '' }, // Descrizione opzionale
+    // Potresti aggiungere altri campi se necessario, es: order (per l'ordinamento)
+    createdAt: { type: Date, default: Date.now }
+});
+const Category = mongoose.model('Category', categorySchema);
 // Schema MenuItem Aggiornato (per opzioni di personalizzazione future)
 const customizableOptionSchema = new mongoose.Schema({
     name: { type: String, required: true }, // Es. "Extra Formaggio", "Senza Cipolle"
@@ -106,12 +112,12 @@ const customizableOptionSchema = new mongoose.Schema({
 const menuItemSchema = new mongoose.Schema({
     itemId: { type: String, required: true, unique: true, trim: true },
     name: { type: String, required: true, trim: true },
-    category: { type: String, required: true, trim: true },
+    category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true }, // MODIFICATO
     price: { type: Number, required: true, min: 0 },
     description: { type: String, trim: true },
     image: { type: String, trim: true },
     available: { type: Boolean, default: true },
-    customizableOptions: [customizableOptionSchema] // Array di opzioni per questo item
+    customizableOptions: [customizableOptionSchema]
 });
 const MenuItem = mongoose.model('MenuItem', menuItemSchema);
 
@@ -148,18 +154,18 @@ const Order = mongoose.model('Order', orderSchema);
 
 // --- Dati Iniziali e Costanti (Menu) ---
 const initialMenuData = [
-    { 
-        itemId: 'p1', name: 'Margherita', category: 'Pizze Rosse', price: 7.50, 
-        description: 'Pomodoro San Marzano DOP, Fiordilatte, Basilico fresco, Olio EVO', 
+    {
+        itemId: 'p1', name: 'Margherita', category: 'Pizze Rosse', price: 7.50,
+        description: 'Pomodoro San Marzano DOP, Fiordilatte, Basilico fresco, Olio EVO',
         image: 'https://placehold.co/300x200/FFC107/000000?text=Margherita',
         customizableOptions: [
             { name: 'Senza Mozzarella', priceChange: -0.50 },
             { name: 'Doppio Basilico', priceChange: 0.30 }
         ]
     },
-    { 
-        itemId: 'p2', name: 'Diavola', category: 'Pizze Rosse', price: 8.50, 
-        description: 'Pomodoro San Marzano DOP, Fiordilatte, Salame piccante', 
+    {
+        itemId: 'p2', name: 'Diavola', category: 'Pizze Rosse', price: 8.50,
+        description: 'Pomodoro San Marzano DOP, Fiordilatte, Salame piccante',
         image: 'https://placehold.co/300x200/FF5722/FFFFFF?text=Diavola',
         customizableOptions: [
             { name: 'Extra Salame Piccante', priceChange: 1.50 },
@@ -200,7 +206,7 @@ const authMiddleware = (req, res, next) => {
     }
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded.user; 
+        req.user = decoded.user;
         next();
     } catch (err) {
         console.error("Errore verifica token:", err.message);
@@ -297,7 +303,7 @@ app.post('/api/auth/login', [
 // GET /api/auth/me (come prima)
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('-password -passwordResetToken -passwordResetExpires'); 
+        const user = await User.findById(req.user.id).select('-password -passwordResetToken -passwordResetExpires');
         if (!user) {
             return res.status(404).json({ message: "Utente non trovato." });
         }
@@ -402,14 +408,27 @@ app.post('/api/auth/reset-password/:token', [
 // --- API Endpoints Menu (come prima, con riferimento a customizableOptions) ---
 app.get('/api/menu', async (req, res) => {
     try {
-        const menuItems = await MenuItem.find({ available: true });
-        res.json(menuItems.map(item => ({ // Includi customizableOptions se necessario al frontend
-            itemId: item.itemId, name: item.name, category: item.category,
-            price: item.price, description: item.description, image: item.image,
+        // MODIFICA QUI: Aggiungi .populate('category')
+        const menuItems = await MenuItem.find({ available: true }).populate('category');
+        
+        // Ora menuItems avrà l'oggetto category completo invece del solo ID.
+        // Potrebbe essere necessario adattare la mappatura se il frontend si aspetta una struttura specifica.
+        res.json(menuItems.map(item => ({
+            itemId: item.itemId,
+            name: item.name,
+            // Assicurati che item.category sia l'oggetto popolato e prendi il nome
+            category: item.category ? item.category.name : 'Senza Categoria', // Nome della categoria
+            _categoryId: item.category ? item.category._id : null, // Invia anche l'ID se serve al frontend per filtri
+            price: item.price,
+            description: item.description,
+            image: item.image,
             available: item.available,
-            customizableOptions: item.customizableOptions // Aggiunto
+            customizableOptions: item.customizableOptions
         })));
-    } catch (error) { res.status(500).json({ message: "Errore recupero menu", error: error.message }); }
+    } catch (error) {
+        console.error("Errore recupero menu per cliente:", error); // Log più specifico
+        res.status(500).json({ message: "Errore recupero menu", error: error.message });
+    }
 });
 
 // ... (altri endpoint menu come /api/menu/all-items, POST, PUT, DELETE - potrebbero aver bisogno di gestire customizableOptions se modificabili dallo staff)
@@ -435,20 +454,26 @@ app.post('/api/menu/items', /* authMiddleware, */ uploadMenuItemImage.single('im
     }
 
     try {
-        const { itemId, name, category, price, description, available } = req.body;
+        const { itemId, name, category, price, description, available } = req.body; // 'category' qui sarà l'ID della categoria
         let imagePath = req.body.image; // Per URL manuale come fallback
 
         if (req.file) {
             imagePath = `/uploads/menu_items/${req.file.filename}`;
         }
 
+        if (!mongoose.Types.ObjectId.isValid(category)) { // Aggiungi validazione per l'ID della categoria
+            if (req.file) fs.unlinkSync(req.file.path);
+            return res.status(400).json({ message: "ID categoria non valido fornito." });
+        }
+
         const newItemData = {
-            itemId, name, category, price, description,
+            itemId, name, category: category, // Assicurati che sia l'ID
+            price, description,
             image: imagePath,
-            available: available === 'true' || available === true, // Gestisce stringa da FormData
+            available: available === 'true' || available === true,
         };
         if (req.body.customizableOptions) {
-             try {
+            try {
                 newItemData.customizableOptions = JSON.parse(req.body.customizableOptions);
             } catch (e) {
                 console.warn("Opzioni personalizzabili non valide:", req.body.customizableOptions);
@@ -497,23 +522,30 @@ app.put('/api/menu/items/:id', /* authMiddleware, */ uploadMenuItemImage.single(
             }
             imagePath = `/uploads/menu_items/${req.file.filename}`;
         } else if (newImageUrlProvided) { // Se è stato fornito un nuovo URL testuale (o un URL vuoto per rimuovere)
-             if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/') && req.body.image === '') { // L'utente ha cancellato l'URL di un file caricato
+            if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/') && req.body.image === '') { // L'utente ha cancellato l'URL di un file caricato
                 const oldFilePath = path.join(__dirname, itemToUpdate.image);
                 if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
-             }
-             imagePath = req.body.image; // Usa il nuovo URL (che potrebbe essere vuoto)
+            }
+            imagePath = req.body.image; // Usa il nuovo URL (che potrebbe essere vuoto)
         }
         // Se né req.file né req.body.image sono forniti (o req.body.image è lo stesso), imagePath rimane l'originale.
 
+        if (category && !mongoose.Types.ObjectId.isValid(category)) { // Aggiungi validazione
+            if (req.file) fs.unlinkSync(req.file.path);
+            return res.status(400).json({ message: "ID categoria non valido fornito." });
+        }
+
         const updateData = {
-            name, category, price, description,
+            name,
+            category: category || itemToUpdate.category, // Mantieni la vecchia se non fornita o aggiorna con il nuovo ID
+            price, description,
             available: available === 'true' || available === true,
-            itemId: itemId || itemToUpdate.itemId, // Mantieni vecchio itemId se non fornito
+            itemId: itemId || itemToUpdate.itemId,
             image: imagePath
         };
 
         if (req.body.customizableOptions) {
-             try {
+            try {
                 updateData.customizableOptions = JSON.parse(req.body.customizableOptions);
             } catch (e) {
                 console.warn("Opzioni personalizzabili non valide in PUT:", req.body.customizableOptions);
@@ -529,7 +561,7 @@ app.put('/api/menu/items/:id', /* authMiddleware, */ uploadMenuItemImage.single(
     } catch (error) {
         if (req.file) fs.unlinkSync(req.file.path);
         if (error.code === 11000 && error.keyPattern && error.keyPattern.itemId) {
-             return res.status(409).json({ message: `L'itemId '${error.keyValue.itemId}' è già utilizzato.` });
+            return res.status(409).json({ message: `L'itemId '${error.keyValue.itemId}' è già utilizzato.` });
         }
         console.error(`Errore PUT /api/menu/items/${id}:`, error);
         res.status(500).json({ message: "Errore modifica articolo", error: error.message });
@@ -576,7 +608,7 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
         const newOrderIdString = await generateOrderId();
         const activeOrdersInQueue = await Order.countDocuments({ status: { $nin: [ORDER_STATUSES.SERVITO, ORDER_STATUSES.ANNULLATO] } });
         const waitTimeInfo = calculateEstimatedWaitTime(activeOrdersInQueue);
-        
+
         let calculatedTotalAmount = 0;
         const orderItems = [];
 
@@ -595,7 +627,7 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
                 customizations: typeof cartItem.customizations === 'string' ? cartItem.customizations : (Array.isArray(cartItem.customizations) ? cartItem.customizations.join(', ') : undefined)
             });
         }
-        
+
         const orderData = {
             orderId: newOrderIdString,
             customerName: req.user ? req.user.name : customerName,
@@ -615,9 +647,9 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
         const savedOrder = await newOrder.save();
         console.log(`Nuovo ordine salvato nel DB: ${savedOrder.orderId} da ${orderData.customerName}`);
         res.status(201).json({
-            orderId: savedOrder.orderId, 
+            orderId: savedOrder.orderId,
             customerName: savedOrder.customerName,
-            estimatedWaitTime: `${waitTimeInfo.min}-${waitTimeInfo.max} minuti`, 
+            estimatedWaitTime: `${waitTimeInfo.min}-${waitTimeInfo.max} minuti`,
             orderDetails: savedOrder // Invia l'ordine completo come conferma
         });
     } catch (error) {
@@ -747,9 +779,9 @@ app.delete('/api/users/me/favorites/:favoriteId', authMiddleware, async (req, re
 
         const favoriteIdToRemove = req.params.favoriteId;
         if (!mongoose.Types.ObjectId.isValid(favoriteIdToRemove)) {
-             return res.status(400).json({ message: 'ID preferito non valido.' });
+            return res.status(400).json({ message: 'ID preferito non valido.' });
         }
-        
+
         const initialLength = user.favoriteOrders.length;
         user.favoriteOrders.pull({ _id: favoriteIdToRemove }); // Metodo Mongoose per rimuovere da array di subdocument
 
@@ -762,6 +794,107 @@ app.delete('/api/users/me/favorites/:favoriteId', authMiddleware, async (req, re
     } catch (error) {
         console.error("Errore rimozione ordine preferito:", error);
         res.status(500).json({ message: 'Errore durante la rimozione dell\'ordine preferito.' });
+    }
+});
+
+// --- API Endpoints Categorie (NUOVO) ---
+
+// GET /api/categories - Recupera tutte le categorie
+app.get('/api/categories', async (req, res) => {
+    try {
+        const categories = await Category.find().sort({ name: 1 });
+        res.json(categories);
+    } catch (error) {
+        res.status(500).json({ message: "Errore recupero categorie", error: error.message });
+    }
+});
+
+// POST /api/categories - Crea una nuova categoria
+app.post('/api/categories', /* authMiddleware, */[
+    body('name').not().isEmpty().trim().withMessage('Il nome della categoria è obbligatorio')
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
+    try {
+        const { name, description } = req.body;
+        const existingCategory = await Category.findOne({ name });
+        if (existingCategory) {
+            return res.status(409).json({ message: `La categoria '${name}' esiste già.` });
+        }
+        const newCategory = new Category({ name, description });
+        await newCategory.save();
+        res.status(201).json(newCategory);
+    } catch (error) {
+        console.error("Errore POST /api/categories:", error);
+        if (error.code === 11000) return res.status(409).json({ message: `La categoria '${error.keyValue.name}' esiste già.` });
+        res.status(500).json({ message: "Errore creazione categoria", error: error.message });
+    }
+});
+
+// PUT /api/categories/:id - Modifica una categoria esistente
+app.put('/api/categories/:id', /* authMiddleware, */[
+    body('name').optional().not().isEmpty().trim().withMessage('Il nome della categoria non può essere vuoto se fornito')
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "ID categoria non valido." });
+    }
+    try {
+        const { name, description } = req.body;
+        const categoryToUpdate = await Category.findById(id);
+        if (!categoryToUpdate) {
+            return res.status(404).json({ message: "Categoria non trovata." });
+        }
+
+        // Verifica se il nuovo nome esiste già (escludendo la categoria corrente)
+        if (name && name !== categoryToUpdate.name) {
+            const existingCategory = await Category.findOne({ name: name, _id: { $ne: id } });
+            if (existingCategory) {
+                return res.status(409).json({ message: `La categoria '${name}' esiste già.` });
+            }
+        }
+
+        const updateData = {};
+        if (name !== undefined) updateData.name = name;
+        if (description !== undefined) updateData.description = description;
+
+        const updatedCategory = await Category.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
+        res.json(updatedCategory);
+    } catch (error) {
+        console.error(`Errore PUT /api/categories/${id}:`, error);
+        if (error.code === 11000) return res.status(409).json({ message: `Il nome categoria '${error.keyValue.name}' è già utilizzato.` });
+        res.status(500).json({ message: "Errore modifica categoria", error: error.message });
+    }
+});
+
+// DELETE /api/categories/:id - Elimina una categoria
+app.delete('/api/categories/:id', /* authMiddleware, */ async (req, res) => {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "ID categoria non valido." });
+    }
+    try {
+        // Prima di eliminare una categoria, potresti voler verificare se è usata da qualche MenuItem
+        // Se sì, potresti impedire l'eliminazione o riassegnare gli item a una categoria "Non categorizzato"
+        const itemsInCategory = await MenuItem.countDocuments({ category: id });
+        if (itemsInCategory > 0) {
+            return res.status(400).json({ message: `Impossibile eliminare la categoria perché è associata a ${itemsInCategory} articoli del menu. Rimuovi prima gli articoli o assegnali a un'altra categoria.` });
+        }
+
+        const deletedCategory = await Category.findByIdAndDelete(id);
+        if (!deletedCategory) {
+            return res.status(404).json({ message: "Categoria non trovata." });
+        }
+        res.json({ message: "Categoria eliminata con successo.", deletedCategory });
+    } catch (error) {
+        console.error(`Errore DELETE /api/categories/${id}:`, error);
+        res.status(500).json({ message: "Errore eliminazione categoria", error: error.message });
     }
 });
 
@@ -786,13 +919,13 @@ app.get('/reset-password.html', (req, res) => {
 
 
 app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api') && !req.path.includes('.')) {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-  } else if (req.path.startsWith('/api')) {
-    res.status(404).send('API endpoint not found');
-  }
-  // Non aggiungere un 'else' che invia index.html qui,
-  // altrimenti le richieste a file statici non API (es. /script.js) fallirebbero se non trovate prima
+    if (!req.path.startsWith('/api') && !req.path.includes('.')) {
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    } else if (req.path.startsWith('/api')) {
+        res.status(404).send('API endpoint not found');
+    }
+    // Non aggiungere un 'else' che invia index.html qui,
+    // altrimenti le richieste a file statici non API (es. /script.js) fallirebbero se non trovate prima
 });
 
 app.listen(PORT, () => {

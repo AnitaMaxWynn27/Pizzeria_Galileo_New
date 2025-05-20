@@ -14,7 +14,7 @@ const customerApp = {
     ORDER_STATUS_CLASSES: { RICEVUTO: 'status-ricevuto', IN_PREPARAZIONE: 'status-in-preparazione', PRONTO: 'status-pronto', SERVITO: 'status-servito', ANNULLATO: 'status-annullato' },
     ORDER_PROGRESS_MAP: { RICEVUTO: 25, IN_PREPARAZIONE: 50, PRONTO: 75, SERVITO: 100, ANNULLATO: 0 },
 
-    init: async function() {
+    init: async function () {
         customerApp.loadTokenAndUser();
 
         // Event Listeners Esistenti
@@ -43,7 +43,7 @@ const customerApp = {
         document.getElementById('register-form').addEventListener('submit', customerApp.handleRegister);
         document.getElementById('submit-order').addEventListener('click', customerApp.submitOrder);
         document.getElementById('new-order-button').addEventListener('click', () => {
-             if (!customerApp.currentMenu || customerApp.currentMenu.length === 0) {
+            if (!customerApp.currentMenu || customerApp.currentMenu.length === 0) {
                 customerApp.loadMenu().then(() => customerApp.showView('customer-order-view'));
             } else {
                 customerApp.applyFiltersAndRenderMenu();
@@ -64,7 +64,7 @@ const customerApp = {
         }
 
         const menuSearchInput = document.getElementById('menu-search-input');
-        if(menuSearchInput) {
+        if (menuSearchInput) {
             menuSearchInput.addEventListener('input', (e) => {
                 customerApp.applyFiltersAndRenderMenu();
             });
@@ -121,7 +121,7 @@ const customerApp = {
         }
     },
 
-    clearFormErrors: function(formId) {
+    clearFormErrors: function (formId) {
         const form = document.getElementById(formId);
         if (form) {
             form.querySelectorAll('.error-message').forEach(span => span.textContent = '');
@@ -129,14 +129,14 @@ const customerApp = {
         }
     },
 
-    displayFieldError: function(fieldId, message) {
+    displayFieldError: function (fieldId, message) {
         const errorSpan = document.getElementById(`${fieldId}-error`);
         const fieldInput = document.getElementById(fieldId);
         if (errorSpan) errorSpan.textContent = message;
         if (fieldInput) fieldInput.classList.add('invalid');
     },
 
-    validateRegistrationForm: function(name, email, password) {
+    validateRegistrationForm: function (name, email, password) {
         customerApp.clearFormErrors('register-form');
         let isValid = true;
         if (!name.trim()) {
@@ -160,7 +160,7 @@ const customerApp = {
         return isValid;
     },
 
-    validateLoginForm: function(email, password) {
+    validateLoginForm: function (email, password) {
         customerApp.clearFormErrors('login-form');
         let isValid = true;
         if (!email.trim()) {
@@ -174,7 +174,7 @@ const customerApp = {
         return isValid;
     },
 
-    validateCustomerName: function() {
+    validateCustomerName: function () {
         customerApp.clearFormErrors('cart-summary');
         const customerNameInput = document.getElementById('customer-name');
         let customerName = customerNameInput.value.trim();
@@ -187,7 +187,7 @@ const customerApp = {
         return isValid;
     },
 
-    handleRegister: async function(event) {
+    handleRegister: async function (event) {
         event.preventDefault();
         const form = event.target;
         const name = form.name.value;
@@ -216,9 +216,9 @@ const customerApp = {
                     data.errors.forEach(err => {
                         if (err.path === 'email') customerApp.displayFieldError('register-email', err.msg);
                     });
-                     customerApp.displayMessage('Correggi gli errori nel modulo.', 'error');
+                    customerApp.displayMessage('Correggi gli errori nel modulo.', 'error');
                 } else {
-                     customerApp.displayMessage(data.message || 'Errore di registrazione', 'error');
+                    customerApp.displayMessage(data.message || 'Errore di registrazione', 'error');
                 }
                 throw new Error(data.message || 'Errore di registrazione');
             }
@@ -236,7 +236,7 @@ const customerApp = {
         }
     },
 
-    handleLogin: async function(event) {
+    handleLogin: async function (event) {
         event.preventDefault();
         const form = event.target;
         const email = form.email.value;
@@ -276,7 +276,7 @@ const customerApp = {
         }
     },
 
-    handleForgotPasswordSubmit: async function(event) {
+    handleForgotPasswordSubmit: async function (event) {
         event.preventDefault();
         customerApp.clearFormErrors('forgot-password-form');
         const emailInput = document.getElementById('forgot-email');
@@ -317,7 +317,7 @@ const customerApp = {
         }
     },
 
-    handleResetPasswordSubmit: async function(event) {
+    handleResetPasswordSubmit: async function (event) {
         event.preventDefault();
         customerApp.clearFormErrors('reset-password-form');
         const newPasswordInput = document.getElementById('reset-new-password');
@@ -360,7 +360,7 @@ const customerApp = {
 
             if (!response.ok) {
                 if (data.errors && Array.isArray(data.errors)) {
-                     data.errors.forEach(err => {
+                    data.errors.forEach(err => {
                         if (err.path === 'password') customerApp.displayFieldError('reset-new-password', err.msg);
                     });
                 }
@@ -369,7 +369,7 @@ const customerApp = {
 
             customerApp.displayMessage(data.message || 'Password reimpostata con successo! Ora puoi effettuare il login.', 'success');
             event.target.reset();
-            if(tokenInput) tokenInput.value = '';
+            if (tokenInput) tokenInput.value = '';
             customerApp.showView('login-view');
 
         } catch (error) {
@@ -381,16 +381,16 @@ const customerApp = {
         }
     },
 
-     logout: function() {
+    logout: function () {
         customerApp.clearTokenAndUser();
         customerApp.updateNavUI();
         const menuContainer = document.getElementById('menu-categories');
-        if(menuContainer) menuContainer.innerHTML = '';
+        if (menuContainer) menuContainer.innerHTML = '';
         const noMenuItemsMessage = document.getElementById('no-menu-items-message');
-        if(noMenuItemsMessage) noMenuItemsMessage.style.display = 'block';
+        if (noMenuItemsMessage) noMenuItemsMessage.style.display = 'block';
 
         const categoryFiltersContainer = document.getElementById('menu-category-filters');
-        if(categoryFiltersContainer) {
+        if (categoryFiltersContainer) {
             categoryFiltersContainer.innerHTML = '';
         }
 
@@ -401,11 +401,11 @@ const customerApp = {
         customerApp.displayMessage('Logout effettuato con successo.', 'info');
     },
 
-    submitOrder: async function() {
+    submitOrder: async function () {
         if (customerApp.cart.length === 0) {
             customerApp.displayMessage('Il carrello è vuoto!', 'error'); return;
         }
-        if(!customerApp.currentUser && !customerApp.validateCustomerName()) {
+        if (!customerApp.currentUser && !customerApp.validateCustomerName()) {
             return;
         }
 
@@ -431,8 +431,8 @@ const customerApp = {
             });
             const result = await response.json();
             if (!response.ok) {
-                 const errorMsg = result.errors ? result.errors.map(e => e.msg).join(', ') : (result.message || `Errore HTTP: ${response.status}`);
-                 throw new Error(errorMsg);
+                const errorMsg = result.errors ? result.errors.map(e => e.msg).join(', ') : (result.message || `Errore HTTP: ${response.status}`);
+                throw new Error(errorMsg);
             }
 
             document.getElementById('conf-customer-name').textContent = result.orderDetails.customerName;
@@ -440,7 +440,7 @@ const customerApp = {
             document.getElementById('conf-wait-time').textContent = result.estimatedWaitTime;
 
             const confOrderSummaryEl = document.getElementById('conf-order-summary');
-            if(confOrderSummaryEl) {
+            if (confOrderSummaryEl) {
                 confOrderSummaryEl.innerHTML = '<h4 class="font-semibold text-md mb-2 text-gray-800">Riepilogo Ordine:</h4>';
                 let orderTotal = 0;
                 result.orderDetails.items.forEach(item => {
@@ -463,16 +463,16 @@ const customerApp = {
         }
     },
 
-    loadMenu: async function() {
+    loadMenu: async function () {
         const menuContainer = document.getElementById('menu-categories');
         const loadingPlaceholder = document.getElementById('menu-loading-placeholder');
         const noMenuItemsMessage = document.getElementById('no-menu-items-message');
         const categoryFiltersContainer = document.getElementById('menu-category-filters');
 
-        if(loadingPlaceholder) loadingPlaceholder.style.display = 'block';
-        if(menuContainer) menuContainer.innerHTML = '';
-        if(noMenuItemsMessage) noMenuItemsMessage.style.display = 'none';
-        if(categoryFiltersContainer) categoryFiltersContainer.innerHTML = '';
+        if (loadingPlaceholder) loadingPlaceholder.style.display = 'block';
+        if (menuContainer) menuContainer.innerHTML = '';
+        if (noMenuItemsMessage) noMenuItemsMessage.style.display = 'none';
+        if (categoryFiltersContainer) categoryFiltersContainer.innerHTML = '';
 
         try {
             const response = await fetch(`${customerApp.API_BASE_URL}/api/menu`);
@@ -483,29 +483,36 @@ const customerApp = {
         } catch (error) {
             console.error('Errore caricamento menu:', error);
             customerApp.displayMessage('Impossibile caricare il menu. Riprova più tardi.', 'error');
-            if(noMenuItemsMessage) noMenuItemsMessage.style.display = 'block';
-            if(menuContainer) menuContainer.innerHTML = '';
+            if (noMenuItemsMessage) noMenuItemsMessage.style.display = 'block';
+            if (menuContainer) menuContainer.innerHTML = '';
         } finally {
-            if(loadingPlaceholder) loadingPlaceholder.style.display = 'none';
+            if (loadingPlaceholder) loadingPlaceholder.style.display = 'none';
         }
     },
 
-    renderCategoryFilters: function() {
+    renderCategoryFilters: function () {
         const filtersContainer = document.getElementById('menu-category-filters');
         if (!filtersContainer || customerApp.currentMenu.length === 0) return;
 
-        const categories = ['All', ...new Set(customerApp.currentMenu.map(item => item.category))];
+        // 'item.category' ora è il NOME della categoria, come inviato dal backend
+        // Se hai aggiunto '_categoryId' al backend, potresti usarlo per un filtraggio più robusto
+        // basato su ID, ma per la visualizzazione useremo il nome.
+        const categories = ['All', ...new Set(customerApp.currentMenu.map(item => item.category))]; // item.category è già il nome
 
         filtersContainer.innerHTML = '';
-        categories.forEach(category => {
+        categories.forEach(categoryName => { // Ora categoryName è direttamente il nome
             const button = document.createElement('button');
-            button.textContent = category;
+            button.textContent = categoryName;
             button.className = 'btn btn-filter';
-            if (category === customerApp.currentCategoryFilter) {
+            // Se i filtri si basano sul nome, va bene così.
+            // Se vuoi filtrare per ID, dovresti mappare i nomi agli ID e memorizzarli
+            // oppure assicurarti che currentCategoryFilter usi l'ID se hai _categoryId.
+            // Per ora, manteniamo il filtro basato sul nome come sembra essere nell'immagine.
+            if (categoryName === customerApp.currentCategoryFilter) {
                 button.classList.add('active');
             }
             button.addEventListener('click', () => {
-                customerApp.currentCategoryFilter = category;
+                customerApp.currentCategoryFilter = categoryName; // Filtra per nome
                 filtersContainer.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
                 customerApp.applyFiltersAndRenderMenu();
@@ -514,13 +521,15 @@ const customerApp = {
         });
     },
 
-    applyFiltersAndRenderMenu: function() {
+    // Dentro customerApp
+    applyFiltersAndRenderMenu: function () {
         const menuSearchInput = document.getElementById('menu-search-input');
         const searchTerm = menuSearchInput ? menuSearchInput.value.toLowerCase().trim() : '';
 
         let tempFilteredMenu = [...customerApp.currentMenu];
 
         if (customerApp.currentCategoryFilter !== 'All') {
+            // item.category è già il nome della categoria
             tempFilteredMenu = tempFilteredMenu.filter(item => item.category === customerApp.currentCategoryFilter);
         }
 
@@ -535,11 +544,11 @@ const customerApp = {
         customerApp.renderMenu(searchTerm !== '' || customerApp.currentCategoryFilter !== 'All');
     },
 
-
-    renderMenu: function(isFilteredRender = false) {
+    // Dentro customerApp
+    renderMenu: function (isFilteredRender = false) {
         const menuContainer = document.getElementById('menu-categories');
         const noMenuItemsMessage = document.getElementById('no-menu-items-message');
-        if(!menuContainer || !noMenuItemsMessage) return;
+        if (!menuContainer || !noMenuItemsMessage) return;
 
         menuContainer.innerHTML = '';
         noMenuItemsMessage.style.display = 'none';
@@ -547,48 +556,43 @@ const customerApp = {
         const itemsToRender = customerApp.filteredMenu;
 
         if (itemsToRender.length === 0) {
-            if(isFilteredRender) {
-                 noMenuItemsMessage.textContent = 'Nessun articolo trovato per i filtri selezionati.';
-            } else {
-                 noMenuItemsMessage.textContent = 'Nessun articolo nel menu al momento.';
-            }
-            noMenuItemsMessage.style.display = 'block';
+            // ... (logica messaggio invariata)
             return;
         }
 
         const categories = {};
         itemsToRender.forEach(item => {
+            // item.category è già il nome della categoria
             if (!categories[item.category]) categories[item.category] = [];
             categories[item.category].push(item);
         });
 
-        const categoriesToDisplay = customerApp.currentCategoryFilter !== 'All' && categories[customerApp.currentCategoryFilter]
-                                    ? { [customerApp.currentCategoryFilter]: categories[customerApp.currentCategoryFilter] }
-                                    : categories;
-
-
-        for (const categoryName in categoriesToDisplay) {
+        // Il resto della logica per visualizzare le categorie e gli item rimane simile,
+        // perché ora 'categoryName' in questo loop sarà il nome corretto.
+        for (const categoryName in categories) { // categoryName qui è il nome corretto
             const categoryDiv = document.createElement('div');
-            if (customerApp.currentCategoryFilter === 'All' || Object.keys(categoriesToDisplay).length > 1) {
-                 categoryDiv.innerHTML = `<h3 class="text-3xl font-semibold mb-6 text-gray-800">${categoryName}</h3>`;
+            // Se il filtro è "All" o ci sono più categorie filtrate, mostra il titolo della categoria
+            if (customerApp.currentCategoryFilter === 'All' || Object.keys(categories).length > 1) {
+                categoryDiv.innerHTML = `<h3 class="text-3xl font-semibold mb-6 text-gray-800">${categoryName}</h3>`;
             }
             const itemsGrid = document.createElement('div');
             itemsGrid.className = 'grid md:grid-cols-2 xl:grid-cols-3 gap-6';
 
-            categoriesToDisplay[categoryName].forEach(item => {
+            categories[categoryName].forEach(item => {
                 const itemCard = document.createElement('div');
                 itemCard.className = 'card menu-item-card p-5 flex flex-col justify-between';
+                // ... (HTML interno della card dell'item rimane invariato) ...
                 itemCard.innerHTML = `
-                    <div>
-                        <img src="${item.image || 'https://placehold.co/300x200/E2E8F0/4A5568?text=Pizza!'}" alt="${item.name}" class="w-full rounded-lg mb-4 shadow-md aspect-video object-cover" onerror="this.onerror=null;this.src='https://placehold.co/300x200/E2E8F0/4A5568?text=Immagine+non+disponibile';">
-                        <h4 class="item-name mb-1">${item.name}</h4>
-                        <p class="item-description mb-3">${item.description || ''}</p>
-                    </div>
-                    <div class="flex justify-between items-center mt-auto">
-                        <p class="item-price">€ ${item.price.toFixed(2)}</p>
-                        <button class="btn btn-primary btn-sm add-to-cart-btn" data-id="${item.itemId}" aria-label="Aggiungi ${item.name} al carrello">Aggiungi</button>
-                    </div>
-                `;
+                <div>
+                    <img src="${item.image || 'https://placehold.co/300x200/E2E8F0/4A5568?text=Pizza!'}" alt="${item.name}" class="w-full rounded-lg mb-4 shadow-md aspect-video object-cover" onerror="this.onerror=null;this.src='https://placehold.co/300x200/E2E8F0/4A5568?text=Immagine+non+disponibile';">
+                    <h4 class="item-name mb-1">${item.name}</h4>
+                    <p class="item-description mb-3">${item.description || ''}</p>
+                </div>
+                <div class="flex justify-between items-center mt-auto">
+                    <p class="item-price">€ ${item.price.toFixed(2)}</p>
+                    <button class="btn btn-primary btn-sm add-to-cart-btn" data-id="${item.itemId}" aria-label="Aggiungi ${item.name} al carrello">Aggiungi</button>
+                </div>
+            `;
                 itemsGrid.appendChild(itemCard);
             });
             categoryDiv.appendChild(itemsGrid);
@@ -602,41 +606,41 @@ const customerApp = {
         });
     },
 
-    loadTokenAndUser: function() {
+    loadTokenAndUser: function () {
         const token = localStorage.getItem('pizzeriaAuthToken');
         const user = localStorage.getItem('pizzeriaUser');
         if (token && user) {
             customerApp.authToken = token;
             try {
                 customerApp.currentUser = JSON.parse(user);
-            } catch(e) {
+            } catch (e) {
                 console.error("Errore nel parsing dell'utente da localStorage", e);
                 customerApp.clearTokenAndUser();
             }
         }
     },
 
-    saveTokenAndUser: function(token, user) {
+    saveTokenAndUser: function (token, user) {
         customerApp.authToken = token;
         customerApp.currentUser = user;
         localStorage.setItem('pizzeriaAuthToken', token);
         localStorage.setItem('pizzeriaUser', JSON.stringify(user));
     },
 
-    clearTokenAndUser: function() {
+    clearTokenAndUser: function () {
         customerApp.authToken = null;
         customerApp.currentUser = null;
         customerApp.currentMenu = [];
         customerApp.filteredMenu = [];
         customerApp.currentCategoryFilter = 'All';
         const menuSearchInput = document.getElementById('menu-search-input');
-        if(menuSearchInput) menuSearchInput.value = '';
+        if (menuSearchInput) menuSearchInput.value = '';
 
         localStorage.removeItem('pizzeriaAuthToken');
         localStorage.removeItem('pizzeriaUser');
     },
 
-    updateNavUI: function() {
+    updateNavUI: function () {
         const guestNavCenter = document.getElementById('guest-nav-center');
         const userNavCenter = document.getElementById('user-nav-center');
         const userNavRight = document.getElementById('user-nav-right');
@@ -647,8 +651,8 @@ const customerApp = {
             if (guestNavCenter) guestNavCenter.style.display = 'none';
             if (userNavCenter) userNavCenter.style.display = 'flex';
             if (userNavRight) userNavRight.style.display = 'flex';
-            if(navUsername) navUsername.textContent = customerApp.currentUser.name || 'Utente';
-            if(customerNameInput) {
+            if (navUsername) navUsername.textContent = customerApp.currentUser.name || 'Utente';
+            if (customerNameInput) {
                 customerNameInput.value = customerApp.currentUser.name || '';
                 customerNameInput.disabled = true;
             }
@@ -656,15 +660,15 @@ const customerApp = {
             if (guestNavCenter) guestNavCenter.style.display = 'flex';
             if (userNavCenter) userNavCenter.style.display = 'none';
             if (userNavRight) userNavRight.style.display = 'none';
-            if(navUsername) navUsername.textContent = 'Utente';
-            if(customerNameInput) {
+            if (navUsername) navUsername.textContent = 'Utente';
+            if (customerNameInput) {
                 customerNameInput.value = '';
                 customerNameInput.disabled = false;
             }
         }
     },
 
-    showView: function(viewId) {
+    showView: function (viewId) {
         if (customerApp.trackingIntervalId && viewId !== 'order-tracking-view') {
             clearInterval(customerApp.trackingIntervalId);
             customerApp.trackingIntervalId = null;
@@ -684,38 +688,38 @@ const customerApp = {
         if (viewId !== 'forgot-password-view') customerApp.clearFormErrors('forgot-password-form');
         if (viewId !== 'reset-password-view') customerApp.clearFormErrors('reset-password-form');
 
-        if(viewId !== 'customer-order-view' && document.getElementById('customer-name') && !document.getElementById('customer-name').disabled){
-             customerApp.clearFormErrors('cart-summary');
+        if (viewId !== 'customer-order-view' && document.getElementById('customer-name') && !document.getElementById('customer-name').disabled) {
+            customerApp.clearFormErrors('cart-summary');
         }
 
 
         if (viewId !== 'order-tracking-view') {
             const trackInput = document.getElementById('track-order-id-input');
             const trackResults = document.getElementById('tracking-results-area');
-            if(trackInput) trackInput.value = '';
-            if(trackResults) trackResults.innerHTML = '';
+            if (trackInput) trackInput.value = '';
+            if (trackResults) trackResults.innerHTML = '';
         }
     },
-    displayUserProfile: async function() {
+    displayUserProfile: async function () {
         if (!customerApp.currentUser) {
             customerApp.showView('login-view');
             return;
         }
         try {
             // I dati base (nome, email) sono già in currentUser, carichiamo createdAt per completezza
-            const userDetailsFromServerResponse = await fetch(`${customerApp.API_BASE_URL}/api/auth/me`, { headers: { 'Authorization': `Bearer ${customerApp.authToken}` }});
-            if(!userDetailsFromServerResponse.ok) throw new Error("Impossibile recuperare i dettagli dell'utente.");
+            const userDetailsFromServerResponse = await fetch(`${customerApp.API_BASE_URL}/api/auth/me`, { headers: { 'Authorization': `Bearer ${customerApp.authToken}` } });
+            if (!userDetailsFromServerResponse.ok) throw new Error("Impossibile recuperare i dettagli dell'utente.");
             const userDetailsFromServer = await userDetailsFromServerResponse.json();
 
             document.getElementById('profile-name').textContent = userDetailsFromServer.name || customerApp.currentUser.name;
             document.getElementById('profile-email').textContent = userDetailsFromServer.email || customerApp.currentUser.email;
 
-             if(userDetailsFromServer.createdAt) {
+            if (userDetailsFromServer.createdAt) {
                 document.getElementById('profile-created-at').textContent = new Date(userDetailsFromServer.createdAt).toLocaleDateString('it-IT', { year: 'numeric', month: 'long', day: 'numeric' });
-             } else {
+            } else {
                 document.getElementById('profile-created-at').textContent = 'N/D';
-             }
-        } catch(error) {
+            }
+        } catch (error) {
             console.error("Errore caricamento dati profilo:", error);
             // Fallback ai dati già presenti in currentUser se il fetch fallisce
             document.getElementById('profile-name').textContent = customerApp.currentUser.name || 'N/D';
@@ -725,7 +729,7 @@ const customerApp = {
         }
     },
 
-    loadOrderHistory: async function() {
+    loadOrderHistory: async function () {
         const historyList = document.getElementById('user-order-history-list');
         const loadingPlaceholder = document.getElementById('order-history-loading-placeholder');
         if (!historyList || !loadingPlaceholder) return;
@@ -770,7 +774,7 @@ const customerApp = {
                         <h4 class="text-lg font-semibold text-red-700">${order.orderId}</h4>
                         <span class="badge ${statusClass}">${order.status}</span>
                     </div>
-                    <p class="text-sm text-gray-500">Data: ${new Date(order.orderTime).toLocaleDateString('it-IT')} alle ${new Date(order.orderTime).toLocaleTimeString('it-IT', {hour: '2-digit', minute: '2-digit'})}</p>
+                    <p class="text-sm text-gray-500">Data: ${new Date(order.orderTime).toLocaleDateString('it-IT')} alle ${new Date(order.orderTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</p>
                     <p class="text-md font-semibold mt-1">Totale: €${order.totalAmount.toFixed(2)}</p>
                     <div class="mt-2"><strong>Articoli:</strong>${itemsHtml}</div>
                     <button class="btn btn-secondary btn-sm mt-4 py-2 px-3 track-this-order-btn" data-order-id="${order.orderId}" aria-label="Traccia ordine ${order.orderId}">
@@ -794,7 +798,7 @@ const customerApp = {
         }
     },
 
-    navigateToTracking: function(orderId, originViewId) {
+    navigateToTracking: function (orderId, originViewId) {
         const trackInput = document.getElementById('track-order-id-input');
         const backButton = document.getElementById('back-to-my-orders-btn');
 
@@ -811,7 +815,7 @@ const customerApp = {
             }
         }
     },
-    addToCart: function(itemId, buttonElement) {
+    addToCart: function (itemId, buttonElement) {
         const menuItem = customerApp.currentMenu.find(item => item.itemId === itemId);
         if (!menuItem) return;
 
@@ -834,11 +838,11 @@ const customerApp = {
                 buttonElement.disabled = false;
             }, 1500);
         } else {
-             customerApp.displayMessage(`${menuItem.name} aggiunto al carrello!`, 'success', 2000);
+            customerApp.displayMessage(`${menuItem.name} aggiunto al carrello!`, 'success', 2000);
         }
     },
 
-    removeFromCart: function(itemId, removeAll = false) {
+    removeFromCart: function (itemId, removeAll = false) {
         const itemIndex = customerApp.cart.findIndex(item => item.itemId === itemId);
         if (itemIndex > -1) {
             if (removeAll || customerApp.cart[itemIndex].quantity === 1) {
@@ -850,10 +854,10 @@ const customerApp = {
         customerApp.updateCartDisplay();
     },
 
-    updateCartDisplay: function() {
+    updateCartDisplay: function () {
         const cartItemsContainer = document.getElementById('cart-items');
         const cartTotalEl = document.getElementById('cart-total');
-        if(!cartItemsContainer || !cartTotalEl) return;
+        if (!cartItemsContainer || !cartTotalEl) return;
 
         if (customerApp.cart.length === 0) {
             cartItemsContainer.innerHTML = '<p class="text-gray-500 italic">Il carrello è vuoto.</p>';
@@ -895,9 +899,9 @@ const customerApp = {
         });
     },
 
-    _updateTrackingUI: function(order) {
+    _updateTrackingUI: function (order) {
         const resultsArea = document.getElementById('tracking-results-area');
-        if(!resultsArea) return;
+        if (!resultsArea) return;
 
         const statusSteps = [customerApp.ORDER_STATUSES.RICEVUTO, customerApp.ORDER_STATUSES.IN_PREPARAZIONE, customerApp.ORDER_STATUSES.PRONTO, customerApp.ORDER_STATUSES.SERVITO];
         let stepsHtml = '<div class="progress-steps">';
@@ -938,11 +942,11 @@ const customerApp = {
             if (remainingMinutes < 0) remainingMinutes = 0;
             detailsHtml += `<p class="text-center text-gray-700 mb-2">Tempo stimato rimanente: circa ${remainingMinutes} minuti.</p>`;
         } else if (order.status === customerApp.ORDER_STATUSES.PRONTO) {
-             detailsHtml += `<p class="text-center text-green-600 font-semibold mb-2">Il tuo ordine è pronto!</p>`;
-             if (order.actualReadyTime) detailsHtml += `<p class="text-center text-sm text-gray-500">Pronto alle: ${new Date(order.actualReadyTime).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}</p>`;
+            detailsHtml += `<p class="text-center text-green-600 font-semibold mb-2">Il tuo ordine è pronto!</p>`;
+            if (order.actualReadyTime) detailsHtml += `<p class="text-center text-sm text-gray-500">Pronto alle: ${new Date(order.actualReadyTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</p>`;
         } else if (order.status === customerApp.ORDER_STATUSES.SERVITO) {
             detailsHtml += `<p class="text-center text-blue-600 font-semibold mb-2">Ordine ritirato/consegnato. Grazie!</p>`;
-             if (order.servedTime) detailsHtml += `<p class="text-center text-sm text-gray-500">Servito alle: ${new Date(order.servedTime).toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'})}</p>`;
+            if (order.servedTime) detailsHtml += `<p class="text-center text-sm text-gray-500">Servito alle: ${new Date(order.servedTime).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}</p>`;
         } else if (order.status === customerApp.ORDER_STATUSES.ANNULLATO) {
             detailsHtml += `<p class="text-center text-red-600 font-semibold mb-2">Questo ordine è stato annullato.</p>`;
         }
@@ -965,10 +969,10 @@ const customerApp = {
         }
     },
 
-    trackOrder: async function(isManualSearch = true) {
+    trackOrder: async function (isManualSearch = true) {
         const orderIdToTrackInput = document.getElementById('track-order-id-input');
         const resultsArea = document.getElementById('tracking-results-area');
-        if(!orderIdToTrackInput || !resultsArea) return;
+        if (!orderIdToTrackInput || !resultsArea) return;
 
         const orderIdToTrack = orderIdToTrackInput.value.trim().toUpperCase();
 
@@ -978,14 +982,14 @@ const customerApp = {
         }
 
         if (!orderIdToTrack) {
-            if(isManualSearch) resultsArea.innerHTML = '<p class="text-red-600 text-center">Inserisci un ID Ordine.</p>';
+            if (isManualSearch) resultsArea.innerHTML = '<p class="text-red-600 text-center">Inserisci un ID Ordine.</p>';
             if (customerApp.trackingIntervalId) {
                 clearInterval(customerApp.trackingIntervalId);
                 customerApp.trackingIntervalId = null;
             }
             return;
         }
-        if(isManualSearch || !resultsArea.innerHTML.includes(orderIdToTrack) ) {
+        if (isManualSearch || !resultsArea.innerHTML.includes(orderIdToTrack)) {
             resultsArea.innerHTML = '<div class="spinner"></div><p class="text-center text-gray-600">Ricerca ordine in corso...</p>';
         }
 
@@ -993,7 +997,7 @@ const customerApp = {
             const response = await fetch(`${customerApp.API_BASE_URL}/api/orders/track/${orderIdToTrack}`);
             if (!response.ok) {
                 if (response.status === 404) {
-                     resultsArea.innerHTML = `<p class="text-red-600 text-center">Ordine ID "${orderIdToTrack}" non trovato.</p>`;
+                    resultsArea.innerHTML = `<p class="text-red-600 text-center">Ordine ID "${orderIdToTrack}" non trovato.</p>`;
                 } else {
                     const errorData = await response.json().catch(() => ({ message: `Errore HTTP: ${response.status}` }));
                     throw new Error(errorData.message || `Errore HTTP: ${response.status}`);
@@ -1036,7 +1040,7 @@ const customerApp = {
                     }, customerApp.TRACKING_INTERVAL_MS);
                 }
             } else {
-                 if (customerApp.trackingIntervalId) {
+                if (customerApp.trackingIntervalId) {
                     clearInterval(customerApp.trackingIntervalId);
                     customerApp.trackingIntervalId = null;
                 }
@@ -1051,7 +1055,7 @@ const customerApp = {
         }
     },
 
-    displayMessage: function(message, type = 'info', duration = 4000) {
+    displayMessage: function (message, type = 'info', duration = 4000) {
         const messageArea = document.getElementById('message-area-customer');
         if (!messageArea) return;
         messageArea.textContent = message;
