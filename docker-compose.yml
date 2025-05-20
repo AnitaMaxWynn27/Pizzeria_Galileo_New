@@ -1,0 +1,30 @@
+# docker-compose.yml
+services:
+  pizzeria-app:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/usr/src/app
+      - /usr/src/app/node_modules # Mantiene i node_modules del container
+    environment:
+      - NODE_ENV=development
+      - MONGO_URI=mongodb://mongo:27017/pizzeria
+      - JWT_SECRET=qM%86EuLtjTboEwrRKq!5exwh$qASYPUUSh5qAV8Sci#mLcsgjFf43r$o2Tzu2bV%AaM^$v4UKcB3vrTkoQN5uNQPiaag$RFXPYpadQz5yCkZkqMif%&$yafrhwoT3p# # CAMBIA QUESTO!
+    depends_on:
+      - mongo
+    restart: unless-stopped
+    container_name: pizzeria_galileo_app
+
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    container_name: pizzeria_mongo_db
+
+volumes:
+  mongo-data:

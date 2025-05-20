@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizzeria Da Galileo - Ordina Online</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@700&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #FFF8F0;
+            color: #3D322C;
+        }
+
+        .font-brand {
+            font-family: 'Playfair Display', serif;
+        }
+
+        .card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.07);
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+
+        .card:hover {
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
+            transform: translateY(-3px);
+        }
+
+        .btn {
+            padding: 0.75rem 1.75rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            text-align: center;
+            letter-spacing: 0.025em;
+            border: 1px solid transparent;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background-color: #D72638;
+            color: white;
+            border-color: #D72638;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background-color: #B81D2E;
+            border-color: #B81D2E;
+        }
+
+        .btn-secondary {
+            background-color: #4A5568;
+            color: white;
+            border-color: #4A5568;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background-color: #2D3748;
+            border-color: #2D3748;
+        }
+
+        .btn-green {
+            background-color: #28A745;
+            color: white;
+            border-color: #28A745;
+        }
+
+        .btn-green:hover:not(:disabled) {
+            background-color: #218838;
+            border-color: #218838;
+        }
+
+        .btn-outline {
+            background-color: transparent;
+            color: #D72638;
+            border-color: #D72638;
+        }
+
+        .btn-outline:hover:not(:disabled) {
+            background-color: #D72638;
+            color: white;
+        }
+
+        .btn-filter {
+            /* Stile per i bottoni filtro categoria */
+            background-color: #f0f0f0;
+            color: #3D322C;
+            border: 1px solid #d1d5db;
+            padding: 0.5rem 1rem;
+            margin: 0.25rem;
+        }
+
+        .btn-filter.active {
+            /* Stile per il bottone filtro attivo */
+            background-color: #D72638;
+            color: white;
+            border-color: #D72638;
+        }
+
+        .btn-link {
+            color: #D72638;
+            text-decoration: none;
+            background: none;
+            padding: 0;
+            font-weight: 500;
+        }
+
+        .btn-link:hover {
+            color: #B81D2E;
+            text-decoration: underline;
+        }
+
+        .badge {
+            padding: .3em .75em;
+            border-radius: .375rem;
+            font-size: .8em;
+            font-weight: 600;
+            line-height: 1;
+        }
+
+        .status-ricevuto {
+            background-color: #E9D8FD;
+            color: #8A2BE2;
+            border: 1px solid #D1B0F2;
+        }
+
+        .status-in-preparazione {
+            background-color: #FEF3C7;
+            color: #D97706;
+            border: 1px solid #FDE68A;
+        }
+
+        .status-pronto {
+            background-color: #D1FAE5;
+            color: #065F46;
+            border: 1px solid #A7F3D0;
+        }
+
+        .status-servito {
+            background-color: #DBEAFE;
+            color: #1E40AF;
+            border: 1px solid #BFDBFE;
+        }
+
+        .status-annullato {
+            background-color: #FEE2E2;
+            color: #991B1B;
+            border: 1px solid #FECACA;
+        }
+
+        .view {
+            display: none;
+        }
+
+        .view.active {
+            display: block;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.4rem;
+            font-weight: 500;
+            color: #4A5568;
+            font-size: 0.9rem;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid #D1D5DB;
+            border-radius: 0.375rem;
+            font-size: 0.95rem;
+            transition: border-color .15s ease-in-out, box-shadow .15s ease-in-out;
+            background-color: #F9FAFB;
+        }
+
+        .form-input:focus {
+            border-color: #D72638;
+            outline: 0;
+            box-shadow: 0 0 0 0.2rem rgba(215, 38, 56, .25);
+            background-color: white;
+        }
+
+        .form-input.invalid {
+            /* Stile per input non validi */
+            border-color: #D72638;
+            /* Rosso per errore */
+        }
+
+        .error-message {
+            /* Stile per messaggi di errore sotto i campi */
+            color: #D72638;
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+            display: block;
+            /* Assicura che sia visibile se ha contenuto */
+            min-height: 1em;
+            /* Evita scatti di layout */
+        }
+
+        .progress-bar-container {
+            width: 100%;
+            background-color: #E5E7EB;
+            border-radius: .5rem;
+            overflow: hidden;
+            margin-top: .5rem;
+            margin-bottom: 1rem
+        }
+
+        .progress-bar {
+            height: 1.5rem;
+            background-color: #D72638;
+            text-align: center;
+            line-height: 1.5rem;
+            color: white;
+            font-weight: 700;
+            transition: width .5s ease-in-out;
+            border-radius: .5rem
+        }
+
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1rem
+        }
+
+        .progress-step {
+            text-align: center;
+            flex: 1;
+            padding: .5rem;
+            border-radius: .375rem;
+            background-color: #F3F4F6;
+            color: #6B7280;
+            font-size: .875rem;
+            position: relative
+        }
+
+        .progress-step.completed {
+            background-color: #D1FAE5;
+            color: #065F46;
+            font-weight: 600
+        }
+
+        .progress-step.active {
+            background-color: #FEF3C7;
+            color: #D97706;
+            font-weight: 600
+        }
+
+        .progress-step:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            right: -12.5%;
+            width: 25%;
+            height: 2px;
+            background-color: #D1D5DB;
+            transform: translateY(-50%);
+            z-index: -1
+        }
+
+        .progress-step.completed:not(:last-child)::after {
+            background-color: #34D399
+        }
+
+        #cart-summary {
+            position: sticky;
+            top: 1.5rem;
+        }
+
+        .auth-form-container {
+            max-width: 420px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Stile per le card degli articoli del menu */
+        .menu-item-card {
+            /* Assicura che non ci sia un'immagine di sfondo CSS sulla card, 
+               così da utilizzare esclusivamente il tag <img> per l'immagine del prodotto. */
+            background-image: none !important; 
+        }
+
+        .menu-item-card img {
+            aspect-ratio: 3 / 2;
+            object-fit: contain;
+            width: 100%; /* Assicura che l'immagine prenda la larghezza della card */
+            /* Le classi Tailwind come w-full, h-48 (o altre per l'altezza) 
+               possono essere usate sull'elemento <img> nel JS per maggior controllo */
+        }
+
+        .menu-item-card .item-name {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: #1F2937;
+        }
+
+        .menu-item-card .item-description {
+            font-size: 0.875rem;
+            color: #6B7280;
+            min-height: 3em;
+        }
+
+        .menu-item-card .item-price {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #D72638;
+        }
+
+        #order-history-view .order-card {
+            border-left: 4px solid #D72638;
+        }
+
+        #main-nav {
+            position: relative;
+        }
+
+        #nav-center-group {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #nav-right-group {
+            position: absolute;
+            top: 50%;
+            right: 0;
+            transform: translateY(-50%);
+            display: flex;
+            align-items: center;
+        }
+
+        @media (max-width: 768px) {
+            #nav-right-group {
+                position: static;
+                transform: none;
+                width: 100%;
+                justify-content: center;
+                margin-top: 0.5rem;
+            }
+
+            #main-nav {
+                padding-bottom: 0.5rem;
+            }
+        }
+
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #D72638;
+            animation: spin 1s ease infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body class="p-4 sm:p-6 md:p-8">
+    <header class="text-center mb-10 md:mb-12" role="banner">
+        <h1 class="font-brand text-5xl md:text-6xl font-bold text-red-700 mb-2">Pizzeria Da Galileo</h1>
+        <p class="text-xl text-gray-600">Ordina le tue pizze preferite online!</p>
+    </header>
+
+    <nav id="main-nav" class="mb-10 pb-4 border-b border-gray-200" role="navigation"
+        aria-label="Navigazione principale">
+        <div id="nav-center-group">
+            <div id="guest-nav-center" class="contents">
+                <button id="nav-login" class="btn btn-primary mx-1 sm:mx-2 my-1">Login</button>
+                <button id="nav-register" class="btn btn-outline mx-1 sm:mx-2 my-1">Registrati</button>
+            </div>
+            <div id="user-nav-center" class="contents" style="display:none;">
+                <button id="nav-user-order-online" class="btn btn-primary mx-1 sm:mx-2 my-1">Ordina Online</button>
+                <button id="nav-my-orders" class="btn btn-secondary mx-1 sm:mx-2 my-1">Miei Ordini</button>
+            </div>
+        </div>
+
+        <div id="nav-right-group">
+            <div id="user-nav-right" style="display:none;">
+                <button id="nav-profile" class="btn btn-secondary mx-1 sm:mx-2 my-1">
+                    Profilo (<span id="nav-username" class="font-semibold">Utente</span>)
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main role="main">
+        <div id="message-area-customer" class="mb-6 text-center" aria-live="polite" role="status"></div>
+
+        <div id="customer-order-view" class="view" role="region" aria-labelledby="customer-order-heading">
+            <div class="grid lg:grid-cols-3 gap-6 lg:gap-8">
+                <div class="lg:col-span-2">
+                    <div class="mb-4">
+                        <label for="menu-search-input" class="form-label">Cerca nel Menu:</label>
+                        <input type="text" id="menu-search-input" class="form-input"
+                            placeholder="Es. Margherita, Diavola...">
+                    </div>
+                    <div id="menu-category-filters" class="mb-6 text-center">
+                    </div>
+                    <h2 id="customer-order-heading" class="text-3xl font-semibold mb-6 text-gray-800 sr-only">Il Nostro
+                        Menu</h2>
+                    <div id="menu-loading-placeholder" style="display: none;" class="text-center py-8">
+                        <div class="spinner"></div>
+                        <p class="text-gray-600">Caricamento menu...</p>
+                    </div>
+                    <div id="menu-categories" class="space-y-8">
+                        </div>
+                    <p id="no-menu-items-message" class="text-gray-500 text-center py-4" style="display: none;">Nessun
+                        articolo trovato o il menu è vuoto.</p>
+                </div>
+                <div class="lg:col-span-1" role="complementary" aria-labelledby="cart-heading">
+                    <div id="cart-summary" class="card p-6 shadow-lg">
+                        <h2 id="cart-heading" class="text-2xl font-semibold mb-6 text-gray-800">Il Tuo Ordine</h2>
+                        <div id="cart-items" class="space-y-4 mb-6 max-h-72 overflow-y-auto pr-2">
+                            <p class="text-gray-500 italic">Il carrello è vuoto.</p>
+                        </div>
+                        <div class="border-t border-gray-200 pt-6">
+                            <p class="text-xl font-bold mb-1 text-gray-800">Totale Complessivo:</p>
+                            <p class="text-3xl font-extrabold mb-6 text-red-700"><span id="cart-total">€ 0.00</span></p>
+                            <div class="mb-4">
+                                <label for="customer-name" class="form-label">Il Tuo Nome (per l'ordine):</label>
+                                <input type="text" id="customer-name" class="form-input" placeholder="Es. Mario Rossi"
+                                    aria-describedby="customer-name-error">
+                                <span id="customer-name-error" class="error-message"></span>
+                            </div>
+                            <button id="submit-order" class="btn btn-primary w-full text-lg">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
+                                    class="w-5 h-5 inline-block mr-2">
+                                    <path
+                                        d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.949a.75.75 0 00.95.579h10.479a.75.75 0 00.826-.95l-1.414-4.949a.75.75 0 00-.95-.579H3.105zM2.25 9.75a.75.75 0 000 1.5h15.5a.75.75 0 000-1.5H2.25zM3.283 12.032a.75.75 0 00.949.592l4.95-1.414a.75.75 0 00.578-.95l-1.414-4.95a.75.75 0 00-.95-.578l-4.95 1.414a.75.75 0 00-.578.95l1.414 4.95z" />
+                                </svg>
+                                Invia Ordine
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="order-confirmation-view" class="view card p-6 md:p-8 max-w-xl mx-auto text-center" role="region"
+            aria-labelledby="order-conf-heading">
+            <h2 id="order-conf-heading" class="sr-only">Conferma Ordine</h2>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
+                class="w-16 h-16 text-green-500 mx-auto mb-4">
+                <path fill-rule="evenodd"
+                    d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z"
+                    clip-rule="evenodd" />
+            </svg>
+            <h3 class="text-3xl font-semibold mb-3 text-green-600">Ordine Inviato!</h3>
+            <p class="text-lg text-gray-700 mb-2">Grazie per il tuo ordine, <span id="conf-customer-name"
+                    class="font-semibold"></span>!</p>
+            <p class="text-lg text-gray-700 mb-2">Numero Ordine: <strong id="conf-order-id"
+                    class="text-red-700"></strong></p>
+            <p class="text-lg text-gray-700 mb-6">Tempo di attesa stimato: <strong id="conf-wait-time"></strong></p>
+            <div id="conf-order-summary" class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 text-left">
+                <h4 class="font-semibold text-md mb-2 text-gray-800">Riepilogo Ordine:</h4>
+            </div>
+            <div class="space-y-3 md:space-y-0 md:flex md:space-x-3 justify-center">
+                <button id="go-to-track-from-conf" class="btn btn-green w-full md:w-auto">Traccia il Mio Ordine</button>
+                <button id="new-order-button" class="btn btn-outline w-full md:w-auto">Nuovo Ordine</button>
+            </div>
+        </div>
+
+        <div id="order-tracking-view" class="view card p-6 md:p-8 max-w-xl mx-auto" role="region"
+            aria-labelledby="order-track-heading">
+            <h2 id="order-track-heading" class="text-3xl font-semibold mb-8 text-center text-gray-800">Traccia il Tuo
+                Ordine</h2>
+            <div class="flex mb-6">
+                <input type="text" id="track-order-id-input" class="form-input rounded-r-none flex-grow"
+                    placeholder="ID Ordine (es. ORD001)" readonly aria-label="ID Ordine da tracciare">
+            </div>
+            <div id="tracking-results-area" class="mt-6">
+            </div>
+            <button id="back-to-my-orders-btn" class="btn btn-secondary w-full mt-6" style="display:none;">Torna ai Miei
+                Ordini</button>
+        </div>
+
+        <div id="login-view" class="view active auth-form-container card p-8 md:p-10" role="region"
+            aria-labelledby="login-heading">
+            <h2 id="login-heading" class="text-3xl font-semibold mb-8 text-center text-gray-800">Login Cliente</h2>
+            <form id="login-form" class="space-y-6" novalidate>
+                <div>
+                    <label for="login-email" class="form-label">Email:</label>
+                    <input type="email" id="login-email" name="email" class="form-input" required
+                        aria-describedby="login-email-error">
+                    <span id="login-email-error" class="error-message"></span>
+                </div>
+                <div>
+                    <label for="login-password" class="form-label">Password:</label>
+                    <input type="password" id="login-password" name="password" class="form-input" required
+                        aria-describedby="login-password-error">
+                    <span id="login-password-error" class="error-message"></span>
+                </div>
+                <button type="submit" class="btn btn-primary w-full text-lg py-3">Accedi</button>
+            </form>
+            <p class="text-center text-sm text-gray-600 mt-6">
+                Non hai un account? <button id="go-to-register-link" class="btn-link font-medium">Registrati
+                    qui</button>
+            </p>
+            <p class="text-center text-sm text-gray-600 mt-4">
+                <button id="go-to-forgot-password-link" class="btn-link font-medium">Password dimenticata?</button>
+            </p>
+        </div>
+
+        <div id="register-view" class="view auth-form-container card p-8 md:p-10" role="region"
+            aria-labelledby="register-heading">
+            <h2 id="register-heading" class="text-3xl font-semibold mb-8 text-center text-gray-800">Registrazione
+                Cliente</h2>
+            <form id="register-form" class="space-y-6" novalidate>
+                <div>
+                    <label for="register-name" class="form-label">Nome Completo:</label>
+                    <input type="text" id="register-name" name="name" class="form-input" required
+                        aria-describedby="register-name-error">
+                    <span id="register-name-error" class="error-message"></span>
+                </div>
+                <div>
+                    <label for="register-email" class="form-label">Email:</label>
+                    <input type="email" id="register-email" name="email" class="form-input" required
+                        aria-describedby="register-email-error">
+                    <span id="register-email-error" class="error-message"></span>
+                </div>
+                <div>
+                    <label for="register-password" class="form-label">Password (min. 6 caratteri):</label>
+                    <input type="password" id="register-password" name="password" class="form-input" required
+                        minlength="6" aria-describedby="register-password-error">
+                    <span id="register-password-error" class="error-message"></span>
+                </div>
+                <button type="submit" class="btn btn-primary w-full text-lg py-3">Registrati</button>
+            </form>
+            <p class="text-center text-sm text-gray-600 mt-6">
+                Hai già un account? <button id="go-to-login-link" class="btn-link font-medium">Accedi qui</button>
+            </p>
+        </div>
+
+        <div id="forgot-password-view" class="view auth-form-container card p-8 md:p-10" role="region"
+            aria-labelledby="forgot-password-heading">
+            <h2 id="forgot-password-heading" class="text-3xl font-semibold mb-8 text-center text-gray-800">Recupera
+                Password</h2>
+            <form id="forgot-password-form" class="space-y-6" novalidate>
+                <div>
+                    <label for="forgot-email" class="form-label">La tua Email:</label>
+                    <input type="email" id="forgot-email" name="email" class="form-input" required
+                        aria-describedby="forgot-email-error">
+                    <span id="forgot-email-error" class="error-message"></span>
+                </div>
+                <button type="submit" class="btn btn-primary w-full text-lg py-3">Invia Link di Recupero</button>
+            </form>
+            <p class="text-center text-sm text-gray-600 mt-6">
+                Ricordi la password? <button id="back-to-login-from-forgot" class="btn-link font-medium">Torna al
+                    Login</button>
+            </p>
+        </div>
+
+        <div id="reset-password-view" class="view auth-form-container card p-8 md:p-10" role="region"
+            aria-labelledby="reset-password-heading">
+            <h2 id="reset-password-heading" class="text-3xl font-semibold mb-8 text-center text-gray-800">Reimposta
+                Password</h2>
+            <form id="reset-password-form" class="space-y-6" novalidate>
+                <input type="hidden" id="reset-token-hidden" value="">
+                <div>
+                    <label for="reset-new-password" class="form-label">Nuova Password (min. 6 caratteri):</label>
+                    <input type="password" id="reset-new-password" name="password" class="form-input" required
+                        minlength="6" aria-describedby="reset-new-password-error">
+                    <span id="reset-new-password-error" class="error-message"></span>
+                </div>
+                <div>
+                    <label for="reset-confirm-password" class="form-label">Conferma Nuova Password:</label>
+                    <input type="password" id="reset-confirm-password" name="confirmPassword" class="form-input"
+                        required aria-describedby="reset-confirm-password-error">
+                    <span id="reset-confirm-password-error" class="error-message"></span>
+                </div>
+                <button type="submit" class="btn btn-primary w-full text-lg py-3">Reimposta Password</button>
+            </form>
+        </div>
+
+        <div id="profile-view" class="view card p-6 md:p-8 max-w-lg mx-auto" role="region"
+            aria-labelledby="profile-heading">
+            <h2 id="profile-heading" class="text-3xl font-semibold mb-8 text-center text-gray-800">Il Mio Profilo</h2>
+            <div id="user-profile-info" class="space-y-4 text-lg">
+                <div class="bg-gray-50 p-4 rounded-md"><strong>Nome:</strong> <span id="profile-name"
+                        class="text-gray-700">N/D</span></div>
+                <div class="bg-gray-50 p-4 rounded-md"><strong>Email:</strong> <span id="profile-email"
+                        class="text-gray-700">N/D</span></div>
+                <div class="bg-gray-50 p-4 rounded-md"><strong>Membro dal:</strong> <span id="profile-created-at"
+                        class="text-gray-700">N/D</span></div>
+            </div>
+            <button id="profile-logout-btn" class="btn btn-outline w-full mt-8">Logout</button>
+        </div>
+
+        <div id="order-history-view" class="view p-2" role="region" aria-labelledby="order-history-heading">
+            <h2 id="order-history-heading" class="text-3xl font-semibold mb-8 text-center text-gray-800">Miei Ordini
+            </h2>
+            <div id="order-history-loading-placeholder" style="display: none;" class="text-center py-8">
+                <div class="spinner"></div>
+                <p class="text-gray-600">Caricamento storico ordini...</p>
+            </div>
+            <div id="user-order-history-list" class="space-y-6 max-w-3xl mx-auto">
+                <p class="text-gray-500 text-center py-4">Nessun ordine trovato.</p>
+            </div>
+        </div>
+    </main>
+    <footer role="contentinfo" class="text-center text-sm text-gray-500 mt-12 pb-8">
+        <p>&copy; <span id="current-year"></span> Pizzeria Da Galileo. Tutti i diritti riservati.</p>
+    </footer>
+
+    <script src="/script.js"></script>
+</body>
+
+</html>

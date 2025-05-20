@@ -1,0 +1,25 @@
+    # backend/.dockerignore
+
+    # Ignora la cartella node_modules locale
+    node_modules
+
+    # File di log di npm
+    npm-debug.log
+    yarn-error.log
+    yarn-debug.log
+
+    # Dockerfile stesso non deve essere copiato dentro l'immagine se è nel context
+    # Dockerfile # In realtà, se il Dockerfile è nella cartella context, non serve ignorarlo qui
+               # perché COPY . . lo copierebbe, ma non verrebbe usato. È buona prassi.
+
+    # File di version control
+    .git
+    .gitignore
+    .gitattributes
+
+    # File di configurazione di editor/IDE (opzionale, ma buona pratica)
+    .vscode
+    .idea
+    *.swp
+    *~
+    
