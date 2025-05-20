@@ -8,7 +8,7 @@ const customerApp = {
     currentUser: null,
     authToken: null,
     trackingIntervalId: null,
-    TRACKING_INTERVAL_MS: 10000,
+    TRACKING_INTERVAL_MS: 1000,
 
     ORDER_STATUSES: { RICEVUTO: 'Ricevuto', IN_PREPARAZIONE: 'In Preparazione', PRONTO: 'Pronto per il Ritiro/Consegna', SERVITO: 'Servito/Consegnato', ANNULLATO: 'Annullato' },
     ORDER_STATUS_CLASSES: { RICEVUTO: 'status-ricevuto', IN_PREPARAZIONE: 'status-in-preparazione', PRONTO: 'status-pronto', SERVITO: 'status-servito', ANNULLATO: 'status-annullato' },
@@ -417,12 +417,13 @@ const customerApp = {
             headers['Authorization'] = `Bearer ${customerApp.authToken}`;
         }
         const submitButton = document.getElementById('submit-order');
-        const originalButtonHTML = submitButton.innerHTML;
+        const originalButtonHTML = submitButton.innerHTML; // Salva l'HTML originale
         submitButton.disabled = true;
         submitButton.innerHTML = `
             <svg class="animate-spin h-5 w-5 mr-3 inline" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
             Invio in corso...`;
 
+        // customerApp.cart items already have 'itemId' as the _id from addToCart
         try {
             const response = await fetch(`${customerApp.API_BASE_URL}/api/orders`, {
                 method: 'POST',
@@ -454,14 +455,16 @@ const customerApp = {
             customerApp.cart = [];
             customerApp.updateCartDisplay();
             if (!customerApp.currentUser && customerNameInput) customerNameInput.value = '';
+
         } catch (error) {
             console.error('Errore invio ordine:', error);
             customerApp.displayMessage(`Errore invio ordine: ${error.message}`, 'error');
         } finally {
             submitButton.disabled = false;
-            submitButton.innerHTML = originalButtonHTML;
+            submitButton.innerHTML = originalButtonHTML; // Ripristina l'HTML originale
         }
     },
+
 
     loadMenu: async function () {
         const menuContainer = document.getElementById('menu-categories');
@@ -470,21 +473,22 @@ const customerApp = {
         const categoryFiltersContainer = document.getElementById('menu-category-filters');
 
         if (loadingPlaceholder) loadingPlaceholder.style.display = 'block';
-        if (menuContainer) menuContainer.innerHTML = '';
+        if (menuContainer) menuContainer.innerHTML = ''; // Pulisci prima del caricamento
         if (noMenuItemsMessage) noMenuItemsMessage.style.display = 'none';
         if (categoryFiltersContainer) categoryFiltersContainer.innerHTML = '';
+
 
         try {
             const response = await fetch(`${customerApp.API_BASE_URL}/api/menu`);
             if (!response.ok) throw new Error(`Errore HTTP: ${response.status}`);
-            customerApp.currentMenu = await response.json();
+            customerApp.currentMenu = await response.json(); // Backend now sends items with _id
             customerApp.renderCategoryFilters();
             customerApp.applyFiltersAndRenderMenu();
         } catch (error) {
             console.error('Errore caricamento menu:', error);
             customerApp.displayMessage('Impossibile caricare il menu. Riprova più tardi.', 'error');
             if (noMenuItemsMessage) noMenuItemsMessage.style.display = 'block';
-            if (menuContainer) menuContainer.innerHTML = '';
+            if (menuContainer) menuContainer.innerHTML = '<p class="text-red-500 text-center py-4">Errore nel caricamento del menu.</p>'; // Messaggio di errore nel contenitore
         } finally {
             if (loadingPlaceholder) loadingPlaceholder.style.display = 'none';
         }
@@ -544,44 +548,46 @@ const customerApp = {
         customerApp.renderMenu(searchTerm !== '' || customerApp.currentCategoryFilter !== 'All');
     },
 
-    // Dentro customerApp
     renderMenu: function (isFilteredRender = false) {
         const menuContainer = document.getElementById('menu-categories');
         const noMenuItemsMessage = document.getElementById('no-menu-items-message');
         if (!menuContainer || !noMenuItemsMessage) return;
 
-        menuContainer.innerHTML = '';
+        menuContainer.innerHTML = ''; // Pulisci prima di renderizzare
         noMenuItemsMessage.style.display = 'none';
 
         const itemsToRender = customerApp.filteredMenu;
 
         if (itemsToRender.length === 0) {
-            // ... (logica messaggio invariata)
+            if (isFilteredRender || document.getElementById('menu-search-input')?.value.trim() !== '') {
+                 noMenuItemsMessage.textContent = 'Nessun articolo trovato per i filtri selezionati.';
+            } else {
+                 noMenuItemsMessage.textContent = 'Nessun articolo disponibile nel menu al momento.';
+            }
+            noMenuItemsMessage.style.display = 'block';
             return;
         }
 
         const categories = {};
         itemsToRender.forEach(item => {
-            // item.category è già il nome della categoria
+            // item.category è il nome della categoria, item._id è l'ID MongoDB
             if (!categories[item.category]) categories[item.category] = [];
             categories[item.category].push(item);
         });
 
-        // Il resto della logica per visualizzare le categorie e gli item rimane simile,
-        // perché ora 'categoryName' in questo loop sarà il nome corretto.
-        for (const categoryName in categories) { // categoryName qui è il nome corretto
+        for (const categoryName in categories) {
             const categoryDiv = document.createElement('div');
-            // Se il filtro è "All" o ci sono più categorie filtrate, mostra il titolo della categoria
+            categoryDiv.className = 'mb-8'; // Aggiungi un po' di spazio sotto ogni categoria
+            // Se il filtro è "All" o ci sono più categorie filtrate (o è un render non filtrato con categorie)
             if (customerApp.currentCategoryFilter === 'All' || Object.keys(categories).length > 1) {
                 categoryDiv.innerHTML = `<h3 class="text-3xl font-semibold mb-6 text-gray-800">${categoryName}</h3>`;
             }
             const itemsGrid = document.createElement('div');
             itemsGrid.className = 'grid md:grid-cols-2 xl:grid-cols-3 gap-6';
 
-            categories[categoryName].forEach(item => {
+            categories[categoryName].forEach(item => { // item here has _id
                 const itemCard = document.createElement('div');
                 itemCard.className = 'card menu-item-card p-5 flex flex-col justify-between';
-                // ... (HTML interno della card dell'item rimane invariato) ...
                 itemCard.innerHTML = `
                 <div>
                     <img src="${item.image || 'https://placehold.co/300x200/E2E8F0/4A5568?text=Pizza!'}" alt="${item.name}" class="w-full rounded-lg mb-4 shadow-md aspect-video object-cover" onerror="this.onerror=null;this.src='https://placehold.co/300x200/E2E8F0/4A5568?text=Immagine+non+disponibile';">
@@ -589,10 +595,9 @@ const customerApp = {
                     <p class="item-description mb-3">${item.description || ''}</p>
                 </div>
                 <div class="flex justify-between items-center mt-auto">
-                    <p class="item-price">€ ${item.price.toFixed(2)}</p>
-                    <button class="btn btn-primary btn-sm add-to-cart-btn" data-id="${item.itemId}" aria-label="Aggiungi ${item.name} al carrello">Aggiungi</button>
-                </div>
-            `;
+                    <p class="item-price">€ ${parseFloat(item.price).toFixed(2)}</p>
+                    <button class="btn btn-primary btn-sm add-to-cart-btn" data-id="${item._id}" aria-label="Aggiungi ${item.name} al carrello">Aggiungi</button> 
+                </div>`; // data-id is item._id
                 itemsGrid.appendChild(itemCard);
             });
             categoryDiv.appendChild(itemsGrid);
@@ -601,7 +606,7 @@ const customerApp = {
 
         document.querySelectorAll('.add-to-cart-btn').forEach(button => {
             button.addEventListener('click', (e) => {
-                customerApp.addToCart(e.currentTarget.dataset.id, e.currentTarget);
+                customerApp.addToCart(e.currentTarget.dataset.id, e.currentTarget); // Passes _id
             });
         });
     },
@@ -815,15 +820,30 @@ const customerApp = {
             }
         }
     },
-    addToCart: function (itemId, buttonElement) {
-        const menuItem = customerApp.currentMenu.find(item => item.itemId === itemId);
-        if (!menuItem) return;
+    
+    addToCart: function (idFromButton, buttonElement) { // idFromButton is now _id
+        const menuItem = customerApp.currentMenu.find(item => item._id === idFromButton);
+        if (!menuItem) {
+            console.error("Articolo del menu non trovato con ID:", idFromButton);
+            customerApp.displayMessage("Errore: articolo non trovato.", "error");
+            return;
+        }
 
-        const cartItem = customerApp.cart.find(item => item.itemId === itemId);
+        // The identifier in the cart will be 'itemId', which will hold the product's _id
+        const cartItem = customerApp.cart.find(item => item.itemId === menuItem._id); 
         if (cartItem) {
             cartItem.quantity++;
         } else {
-            customerApp.cart.push({ itemId: itemId, name: menuItem.name, price: menuItem.price, quantity: 1 });
+            // Store _id as itemId in the cart for consistency with the backend (orderItemSchema.itemId)
+            // Also include originalItemId if needed by backend/order processing, though here it's the same as itemId
+            customerApp.cart.push({ 
+                itemId: menuItem._id, 
+                name: menuItem.name, 
+                price: menuItem.price, 
+                quantity: 1, 
+                originalItemId: menuItem._id, // Assuming originalItemId is also the _id for non-customized items
+                // customizations: [] // or appropriate default if you handle customizations
+            });
         }
         customerApp.updateCartDisplay();
 
@@ -838,12 +858,13 @@ const customerApp = {
                 buttonElement.disabled = false;
             }, 1500);
         } else {
+            // Fallback message if buttonElement is not provided, though it usually is
             customerApp.displayMessage(`${menuItem.name} aggiunto al carrello!`, 'success', 2000);
         }
     },
 
-    removeFromCart: function (itemId, removeAll = false) {
-        const itemIndex = customerApp.cart.findIndex(item => item.itemId === itemId);
+    removeFromCart: function (itemIdFromButton, removeAll = false) { // itemIdFromButton è _id
+        const itemIndex = customerApp.cart.findIndex(item => item.itemId === itemIdFromButton);
         if (itemIndex > -1) {
             if (removeAll || customerApp.cart[itemIndex].quantity === 1) {
                 customerApp.cart.splice(itemIndex, 1);
@@ -865,14 +886,13 @@ const customerApp = {
             return;
         }
 
-        cartItemsContainer.innerHTML = '';
+        cartItemsContainer.innerHTML = ''; // Pulisci prima di ridisegnare
         let total = 0;
-        customerApp.cart.forEach(item => {
+        customerApp.cart.forEach(item => { // item.itemId here is the _id
             const itemDiv = document.createElement('div');
-            itemDiv.className = 'flex justify-between items-center border-b border-gray-100 pb-3';
+            itemDiv.className = 'flex justify-between items-center border-b border-gray-100 py-3'; // Aggiunto py-3
             itemDiv.innerHTML = `
-                <div class="flex-grow">
-                    <p class="font-medium text-gray-700">${item.name} (x${item.quantity})</p>
+                <div class="flex-grow pr-2"> <p class="font-medium text-gray-700">${item.name} (x${item.quantity})</p>
                     <p class="text-sm text-gray-500">€ ${(item.price * item.quantity).toFixed(2)}</p>
                 </div>
                 <div class="flex items-center ml-2">
@@ -882,8 +902,7 @@ const customerApp = {
                     <button class="text-sm text-gray-400 hover:text-red-600 font-semibold p-1 ml-1 change-quantity-btn" data-id="${item.itemId}" data-action="remove" title="Rimuovi articolo" aria-label="Rimuovi ${item.name} dal carrello">
                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.58.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
                     </button>
-                </div>
-            `;
+                </div>`;
             cartItemsContainer.appendChild(itemDiv);
             total += item.price * item.quantity;
         });
@@ -891,10 +910,10 @@ const customerApp = {
 
         document.querySelectorAll('.change-quantity-btn').forEach(button => {
             button.addEventListener('click', (e) => {
-                const itemId = e.currentTarget.dataset.id;
+                const itemIdFromCartButton = e.currentTarget.dataset.id; // This is itemId (which holds _id)
                 const action = e.currentTarget.dataset.action;
-                if (action === 'decrease') customerApp.removeFromCart(itemId, false);
-                else if (action === 'remove') customerApp.removeFromCart(itemId, true);
+                if (action === 'decrease') customerApp.removeFromCart(itemIdFromCartButton, false);
+                else if (action === 'remove') customerApp.removeFromCart(itemIdFromCartButton, true);
             });
         });
     },

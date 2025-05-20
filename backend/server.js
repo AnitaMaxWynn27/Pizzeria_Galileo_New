@@ -61,7 +61,6 @@ const uploadMenuItemImage = multer({
 mongoose.connect(MONGO_URI)
     .then(() => {
         console.log('Connesso a MongoDB con successo!');
-        seedMenuItems();
     })
     .catch(err => {
         console.error('Errore di connessione a MongoDB:', err);
@@ -78,14 +77,14 @@ const userSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
     passwordResetToken: { type: String },
     passwordResetExpires: { type: Date },
-    favoriteOrders: [{ // Struttura base per ordini preferiti
+    favoriteOrders: [{
         savedAt: { type: Date, default: Date.now },
-        items: [{ // Snapshot degli items
-            originalItemId: String, // ID dell'item originale nel menu
-            name: String, // Nome dell'item, potrebbe includere personalizzazioni
-            price: Number, // Prezzo al momento del salvataggio
+        items: [{
+            originalItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'MenuItem' }, // Corrected
+            name: String,
+            price: Number,
             quantity: Number,
-            customizations: String // Stringa descrittiva delle personalizzazioni
+            customizations: String
         }],
         totalAmount: Number
     }]
@@ -110,9 +109,9 @@ const customizableOptionSchema = new mongoose.Schema({
 }, { _id: false });
 
 const menuItemSchema = new mongoose.Schema({
-    itemId: { type: String, required: true, unique: true, trim: true },
+    // itemId: { type: String, required: true, unique: true, trim: true }, // RIMOSSO
     name: { type: String, required: true, trim: true },
-    category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true }, // MODIFICATO
+    category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
     price: { type: Number, required: true, min: 0 },
     description: { type: String, trim: true },
     image: { type: String, trim: true },
@@ -123,12 +122,12 @@ const MenuItem = mongoose.model('MenuItem', menuItemSchema);
 
 // Schema OrderItem Aggiornato
 const orderItemSchema = new mongoose.Schema({
-    itemId: { type: String, required: true }, // Potrebbe essere l'ID base del prodotto
-    originalItemId: { type: String }, // ID dell'item originale nel menu, se questo è una variante personalizzata
-    name: { type: String, required: true }, // Nome come appare nell'ordine (può includere info custom)
-    price: { type: Number, required: true }, // Prezzo dell'item nell'ordine (può includere costi custom)
+    itemId: { type: mongoose.Schema.Types.ObjectId, ref: 'MenuItem', required: true },
+    originalItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'MenuItem' }, // If it refers to another MenuItem _id
+    name: { type: String, required: true },
+    price: { type: Number, required: true },
     quantity: { type: Number, required: true, min: 1 },
-    customizations: { type: String } // Stringa descrittiva delle personalizzazioni, es. "Senza cipolla, Extra formaggio"
+    customizations: { type: String }
 }, { _id: false });
 
 const statusHistorySchema = new mongoose.Schema({
@@ -152,6 +151,7 @@ const orderSchema = new mongoose.Schema({
 });
 const Order = mongoose.model('Order', orderSchema);
 
+/*
 // --- Dati Iniziali e Costanti (Menu) ---
 const initialMenuData = [
     {
@@ -193,7 +193,7 @@ async function seedMenuItems() {
         console.error('Errore durante il popolamento del menu:', error);
     }
 }
-
+*/
 // --- Middleware di Autenticazione ---
 const authMiddleware = (req, res, next) => {
     const authHeader = req.header('Authorization');
@@ -408,17 +408,12 @@ app.post('/api/auth/reset-password/:token', [
 // --- API Endpoints Menu (come prima, con riferimento a customizableOptions) ---
 app.get('/api/menu', async (req, res) => {
     try {
-        // MODIFICA QUI: Aggiungi .populate('category')
         const menuItems = await MenuItem.find({ available: true }).populate('category');
-        
-        // Ora menuItems avrà l'oggetto category completo invece del solo ID.
-        // Potrebbe essere necessario adattare la mappatura se il frontend si aspetta una struttura specifica.
         res.json(menuItems.map(item => ({
-            itemId: item.itemId,
+            _id: item._id, // Invia il vero _id
             name: item.name,
-            // Assicurati che item.category sia l'oggetto popolato e prendi il nome
-            category: item.category ? item.category.name : 'Senza Categoria', // Nome della categoria
-            _categoryId: item.category ? item.category._id : null, // Invia anche l'ID se serve al frontend per filtri
+            category: item.category ? item.category.name : 'Senza Categoria',
+            _categoryId: item.category ? item.category._id : null,
             price: item.price,
             description: item.description,
             image: item.image,
@@ -426,7 +421,7 @@ app.get('/api/menu', async (req, res) => {
             customizableOptions: item.customizableOptions
         })));
     } catch (error) {
-        console.error("Errore recupero menu per cliente:", error); // Log più specifico
+        console.error("Errore recupero menu per cliente:", error);
         res.status(500).json({ message: "Errore recupero menu", error: error.message });
     }
 });
@@ -435,39 +430,38 @@ app.get('/api/menu', async (req, res) => {
 // GET /api/menu/all-items (per staff)
 app.get('/api/menu/all-items', /* authMiddleware, TODO: Proteggere */ async (req, res) => {
     try {
-        const menuItems = await MenuItem.find().sort({ category: 1, name: 1 });
-        res.json(menuItems); // Invia l'intero oggetto, inclusi _id e customizableOptions
-    } catch (error) { res.status(500).json({ message: "Errore recupero articoli menu per staff", error: error.message }); }
+        // MODIFICA QUI: Aggiungi .populate('category')
+        const menuItems = await MenuItem.find().populate('category').sort({ 'category.name': 1, name: 1 });
+        res.json(menuItems); // Invia l'intero oggetto, inclusa la categoria popolata
+    } catch (error) {
+        console.error("Errore recupero articoli menu per staff:", error);
+        res.status(500).json({ message: "Errore recupero articoli menu per staff", error: error.message });
+    }
 });
 
 // POST /api/menu/items
 app.post('/api/menu/items', /* authMiddleware, */ uploadMenuItemImage.single('imageFile'), [
-    body('itemId').not().isEmpty().trim().withMessage('itemId è obbligatorio'),
+    // body('itemId').not().isEmpty().trim().withMessage('itemId è obbligatorio'), // RIMOSSO
     body('name').not().isEmpty().trim().withMessage('Nome è obbligatorio'),
-    body('category').not().isEmpty().trim().withMessage('Categoria è obbligatoria'),
+    body('category').not().isEmpty().custom(value => mongoose.Types.ObjectId.isValid(value)).withMessage('ID Categoria è obbligatorio e deve essere valido'),
     body('price').isNumeric().withMessage('Prezzo è obbligatorio e deve essere un numero'),
 ], async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        if (req.file) fs.unlinkSync(req.file.path); // Rimuovi file se validazione fallisce
+        if (req.file) fs.unlinkSync(req.file.path);
         return res.status(400).json({ errors: errors.array() });
     }
 
     try {
-        const { itemId, name, category, price, description, available } = req.body; // 'category' qui sarà l'ID della categoria
-        let imagePath = req.body.image; // Per URL manuale come fallback
+        const { name, category, price, description, available } = req.body; // itemId rimosso
+        let imagePath = req.body.image;
 
         if (req.file) {
             imagePath = `/uploads/menu_items/${req.file.filename}`;
         }
 
-        if (!mongoose.Types.ObjectId.isValid(category)) { // Aggiungi validazione per l'ID della categoria
-            if (req.file) fs.unlinkSync(req.file.path);
-            return res.status(400).json({ message: "ID categoria non valido fornito." });
-        }
-
         const newItemData = {
-            itemId, name, category: category, // Assicurati che sia l'ID
+            name, category, // category è l'ID
             price, description,
             image: imagePath,
             available: available === 'true' || available === true,
@@ -481,13 +475,14 @@ app.post('/api/menu/items', /* authMiddleware, */ uploadMenuItemImage.single('im
             }
         }
 
-
         const newItem = new MenuItem(newItemData);
         await newItem.save();
-        res.status(201).json(newItem);
+        const populatedItem = await MenuItem.findById(newItem._id).populate('category'); // Ripopola per inviare nome categoria
+        res.status(201).json(populatedItem);
     } catch (error) {
-        if (req.file) fs.unlinkSync(req.file.path); // Rimuovi file se salvataggio DB fallisce
-        if (error.code === 11000) return res.status(409).json({ message: `L'articolo con itemId '${error.keyValue.itemId}' esiste già.` });
+        if (req.file) fs.unlinkSync(req.file.path);
+        // Non c'è più errore per itemId duplicato
+        // if (error.code === 11000) return res.status(409).json({ message: `L'articolo con itemId '${error.keyValue.itemId}' esiste già.` });
         console.error("Errore POST /api/menu/items:", error);
         res.status(500).json({ message: "Errore aggiunta articolo", error: error.message });
     }
@@ -496,8 +491,16 @@ app.post('/api/menu/items', /* authMiddleware, */ uploadMenuItemImage.single('im
 // PUT /api/menu/items/:id
 app.put('/api/menu/items/:id', /* authMiddleware, */ uploadMenuItemImage.single('imageFile'), [
     // validatori opzionali
+    body('name').optional().not().isEmpty().trim().withMessage('Il nome non può essere vuoto se fornito'),
+    body('category').optional().custom(value => mongoose.Types.ObjectId.isValid(value)).withMessage('ID Categoria deve essere valido se fornito'),
+    body('price').optional().isNumeric().withMessage('Il prezzo deve essere un numero se fornito'),
 ], async (req, res) => {
-    const { id } = req.params;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        if (req.file) fs.unlinkSync(req.file.path);
+        return res.status(400).json({ errors: errors.array() });
+    }
+    const { id } = req.params; // Questo è il MongoDB _id
     if (!mongoose.Types.ObjectId.isValid(id)) {
         if (req.file) fs.unlinkSync(req.file.path);
         return res.status(400).json({ message: "ID articolo non valido." });
@@ -510,59 +513,62 @@ app.put('/api/menu/items/:id', /* authMiddleware, */ uploadMenuItemImage.single(
             return res.status(404).json({ message: "Articolo non trovato." });
         }
 
-        const { name, category, price, description, available, itemId } = req.body;
-        let imagePath = itemToUpdate.image; // Mantiene l'immagine esistente di default
+        const { name, category, price, description, available /*, itemId */ } = req.body; // itemId rimosso
+        let imagePath = itemToUpdate.image;
         let newImageUrlProvided = req.body.image !== undefined && req.body.image !== itemToUpdate.image;
 
-
-        if (req.file) { // Se un nuovo file è caricato
+        if (req.file) {
             if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/')) {
                 const oldFilePath = path.join(__dirname, itemToUpdate.image);
                 if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
             }
             imagePath = `/uploads/menu_items/${req.file.filename}`;
-        } else if (newImageUrlProvided) { // Se è stato fornito un nuovo URL testuale (o un URL vuoto per rimuovere)
-            if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/') && req.body.image === '') { // L'utente ha cancellato l'URL di un file caricato
+        } else if (newImageUrlProvided) {
+            if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/') && req.body.image === '') {
                 const oldFilePath = path.join(__dirname, itemToUpdate.image);
                 if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
             }
-            imagePath = req.body.image; // Usa il nuovo URL (che potrebbe essere vuoto)
-        }
-        // Se né req.file né req.body.image sono forniti (o req.body.image è lo stesso), imagePath rimane l'originale.
-
-        if (category && !mongoose.Types.ObjectId.isValid(category)) { // Aggiungi validazione
-            if (req.file) fs.unlinkSync(req.file.path);
-            return res.status(400).json({ message: "ID categoria non valido fornito." });
+            imagePath = req.body.image;
         }
 
-        const updateData = {
-            name,
-            category: category || itemToUpdate.category, // Mantieni la vecchia se non fornita o aggiorna con il nuovo ID
-            price, description,
-            available: available === 'true' || available === true,
-            itemId: itemId || itemToUpdate.itemId,
-            image: imagePath
-        };
+        // itemToUpdate.name = name !== undefined ? name : itemToUpdate.name;
+        // itemToUpdate.category = category !== undefined ? category : itemToUpdate.category;
+        // ... e così via per tutti i campi
+        // oppure:
+
+        const updateData = { ...req.body };
+        if (name !== undefined) updateData.name = name;
+        if (category !== undefined) updateData.category = category;
+        if (price !== undefined) updateData.price = parseFloat(price);
+        if (description !== undefined) updateData.description = description;
+        if (available !== undefined) updateData.available = available === 'true' || available === true;
+        updateData.image = imagePath;
+
+        // Rimuovi itemId se presente per errore nel body, non deve essere aggiornato
+        delete updateData.itemId;
+        // delete updateData._id; // MongoDB _id non può essere cambiato
 
         if (req.body.customizableOptions) {
             try {
                 updateData.customizableOptions = JSON.parse(req.body.customizableOptions);
             } catch (e) {
-                console.warn("Opzioni personalizzabili non valide in PUT:", req.body.customizableOptions);
-                // Mantieni quelle esistenti o imposta a array vuoto
                 updateData.customizableOptions = itemToUpdate.customizableOptions;
             }
+        } else {
+            updateData.customizableOptions = itemToUpdate.customizableOptions; // Mantiene se non fornito
         }
 
-
-        const updatedItem = await MenuItem.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
+        const updatedItem = await MenuItem.findByIdAndUpdate(id, updateData, { new: true, runValidators: true }).populate('category');
+        if (!updatedItem) {
+            return res.status(404).json({ message: "Articolo non trovato dopo il tentativo di aggiornamento." });
+        }
         res.json(updatedItem);
 
     } catch (error) {
         if (req.file) fs.unlinkSync(req.file.path);
-        if (error.code === 11000 && error.keyPattern && error.keyPattern.itemId) {
-            return res.status(409).json({ message: `L'itemId '${error.keyValue.itemId}' è già utilizzato.` });
-        }
+        // if (error.code === 11000 && error.keyPattern && error.keyPattern.itemId) { // Non più rilevante per itemId
+        //     return res.status(409).json({ message: `L'itemId '${error.keyValue.itemId}' è già utilizzato.` });
+        // }
         console.error(`Errore PUT /api/menu/items/${id}:`, error);
         res.status(500).json({ message: "Errore modifica articolo", error: error.message });
     }
@@ -613,16 +619,12 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
         const orderItems = [];
 
         for (const cartItem of cart) {
-            // Importante: il prezzo dell'item dovrebbe essere quello finale inviato dal frontend,
-            // che include già le modifiche dovute alle personalizzazioni.
-            // Il backend potrebbe opzionalmente riverificare il prezzo base + delta personalizzazioni se avesse la logica.
-            // Per ora, ci fidiamo del prezzo inviato per l'item personalizzato.
             calculatedTotalAmount += cartItem.price * cartItem.quantity;
             orderItems.push({
-                itemId: cartItem.itemId, // Questo potrebbe essere l'ID customizzato (es. p1_custom_timestamp)
-                originalItemId: cartItem.originalItemId || cartItem.itemId, // ID dell'item base
-                name: cartItem.name, // Nome che include già le personalizzazioni
-                price: cartItem.price, // Prezzo con personalizzazioni
+                itemId: cartItem.itemId, // Questo ora è l'_id del MenuItem
+                originalItemId: cartItem.originalItemId || cartItem.itemId, // Anche questo è un _id
+                name: cartItem.name,
+                price: cartItem.price,
                 quantity: cartItem.quantity,
                 customizations: typeof cartItem.customizations === 'string' ? cartItem.customizations : (Array.isArray(cartItem.customizations) ? cartItem.customizations.join(', ') : undefined)
             });
@@ -650,7 +652,7 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
             orderId: savedOrder.orderId,
             customerName: savedOrder.customerName,
             estimatedWaitTime: `${waitTimeInfo.min}-${waitTimeInfo.max} minuti`,
-            orderDetails: savedOrder // Invia l'ordine completo come conferma
+            orderDetails: savedOrder
         });
     } catch (error) {
         console.error("Errore durante la creazione dell'ordine:", error);

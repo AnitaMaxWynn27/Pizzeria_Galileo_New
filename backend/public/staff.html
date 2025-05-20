@@ -291,10 +291,6 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label for="menu-item-itemId" class="form-label">ID Articolo (es. p1, d1):</label>
-                            <input type="text" id="menu-item-itemId" name="itemId" class="form-input" required>
-                        </div>
-                        <div>
                             <label for="menu-item-name" class="form-label">Nome:</label>
                             <input type="text" id="menu-item-name" name="name" class="form-input" required>
                         </div>
@@ -373,16 +369,15 @@
                 <table class="table-auto w-full">
                     <thead>
                         <tr>
-                            <th>ID Art.</th>
-                            <th>Nome</th>
-                            <th>Categoria</th>
-                            <th class="text-right">Prezzo</th>
+                            <th class="text-left">Nome</th>
+                            <th class="text-left">Categoria</th>
+                            <th class="text-center">Prezzo</th>
                             <th class="text-center">Disponibile</th>
                             <th class="text-center">Azioni</th>
                         </tr>
                     </thead>
                     <tbody id="menu-items-table-body">
-                    </tbody>
+                        </tbody>
                 </table>
             </div>
             <p id="no-menu-items-staff" class="text-gray-500 text-center py-4" style="display: none;">Nessun articolo
