@@ -7,13 +7,11 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult, param } = require('express-validator');
 const crypto = require('crypto'); // Per generare token di reset password
-const multer = require('multer');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/pizzeria';
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET; 
 console.log("JWT_SECRET in server.js:", JWT_SECRET ? "Definito" : "NON DEFINITO!!!"); // Aggiungi questo
 if (!JWT_SECRET) {
     console.error("FATAL ERROR: JWT_SECRET non è definito. Impostalo nelle variabili d'ambiente.");
@@ -24,38 +22,6 @@ if (!JWT_SECRET) {
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // <--- NUOVA RIGA
-
-// --- Configurazione Multer ---
-const UPLOADS_MENU_ITEMS_DIR = path.join(__dirname, 'uploads', 'menu_items');
-// Crea la cartella se non esiste
-if (!fs.existsSync(UPLOADS_MENU_ITEMS_DIR)) {
-    fs.mkdirSync(UPLOADS_MENU_ITEMS_DIR, { recursive: true });
-}
-
-const menuItemsStorage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, UPLOADS_MENU_ITEMS_DIR);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-const imageFileFilter = (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-        cb(null, true);
-    } else {
-        cb(new Error('Solo file immagine sono permessi!'), false);
-    }
-};
-
-const uploadMenuItemImage = multer({
-    storage: menuItemsStorage,
-    fileFilter: imageFileFilter,
-    limits: { fileSize: 5 * 1024 * 1024 } // Limite di 5MB
-});
 
 // --- Connessione a MongoDB ---
 mongoose.connect(MONGO_URI)
@@ -91,55 +57,28 @@ const userSchema = new mongoose.Schema({
     }]
 });
 
-userSchema.methods.comparePassword = async function (candidatePassword) {
+userSchema.methods.comparePassword = async function(candidatePassword) {
     return bcrypt.compare(candidatePassword, this.password);
 };
 const User = mongoose.model('User', userSchema);
 
-const categorySchema = new mongoose.Schema({
-    name: { type: String, required: true, unique: true, trim: true },
-    description: { type: String, trim: true, default: '' }
-}, { timestamps: true });
-const Category = mongoose.model('Category', categorySchema);
-
 
 // Schema MenuItem Aggiornato (per opzioni di personalizzazione future)
-const customizableOptionSchema = new mongoose.Schema({ 
-    name: { type: String, required: true },
-    priceChange: { type: Number, required: true, default: 0 }
+const customizableOptionSchema = new mongoose.Schema({
+    name: { type: String, required: true }, // Es. "Extra Formaggio", "Senza Cipolle"
+    priceChange: { type: Number, required: true, default: 0 } // Es. 0.50 per aggiunta, -0.20 per rimozione
 }, { _id: false });
 
 const menuItemSchema = new mongoose.Schema({
-    slug: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
-    name: { type: String, required: true, trim: true, index: true },
-    category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
+    itemId: { type: String, required: true, unique: true, trim: true },
+    name: { type: String, required: true, trim: true },
+    category: { type: String, required: true, trim: true },
     price: { type: Number, required: true, min: 0 },
     description: { type: String, trim: true },
-    image: { type: String, trim: true }, // Gestito dall'upload
+    image: { type: String, trim: true },
     available: { type: Boolean, default: true },
-    customizableOptions: [customizableOptionSchema]
-}, { timestamps: true });
-
-async function generateUniqueSlug(name, model) {
-    let baseSlug = name.toString().toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^\w\-]+/g, '')
-        .replace(/\-\-+/g, '-')
-        .replace(/^-+/, '')
-        .replace(/-+$/, '');
-    if (!baseSlug) { // Fallback se il nome produce uno slug vuoto
-        baseSlug = 'articolo';
-    }
-
-    let slug = baseSlug;
-    let count = 0;
-    // eslint-disable-next-line no-await-in-loop
-    while (await model.findOne({ slug: slug })) {
-        count++;
-        slug = `${baseSlug}-${count}`;
-    }
-    return slug;
-}
+    customizableOptions: [customizableOptionSchema] // Array di opzioni per questo item
+});
 const MenuItem = mongoose.model('MenuItem', menuItemSchema);
 
 // Schema OrderItem Aggiornato
@@ -175,19 +114,19 @@ const Order = mongoose.model('Order', orderSchema);
 
 // --- Dati Iniziali e Costanti (Menu) ---
 const initialMenuData = [
-    {
-        itemId: 'p1', name: 'Margherita', category: 'Pizze Rosse', price: 7.50,
-        description: 'Pomodoro San Marzano DOP, Fiordilatte, Basilico fresco, Olio EVO',
-        image: '/images/Margherita.png',
+    { 
+        itemId: 'p1', name: 'Margherita', category: 'Pizze Rosse', price: 7.50, 
+        description: 'Pomodoro San Marzano DOP, Fiordilatte, Basilico fresco, Olio EVO', 
+        image: 'https://placehold.co/300x200/FFC107/000000?text=Margherita',
         customizableOptions: [
             { name: 'Senza Mozzarella', priceChange: -0.50 },
             { name: 'Doppio Basilico', priceChange: 0.30 }
         ]
     },
-    {
-        itemId: 'p2', name: 'Diavola', category: 'Pizze Rosse', price: 8.50,
-        description: 'Pomodoro San Marzano DOP, Fiordilatte, Salame piccante',
-        image: '/images/Diavola.png',
+    { 
+        itemId: 'p2', name: 'Diavola', category: 'Pizze Rosse', price: 8.50, 
+        description: 'Pomodoro San Marzano DOP, Fiordilatte, Salame piccante', 
+        image: 'https://placehold.co/300x200/FF5722/FFFFFF?text=Diavola',
         customizableOptions: [
             { name: 'Extra Salame Piccante', priceChange: 1.50 },
             { name: 'Senza Fiordilatte', priceChange: -1.00 }
@@ -227,7 +166,7 @@ const authMiddleware = (req, res, next) => {
     }
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded.user;
+        req.user = decoded.user; 
         next();
     } catch (err) {
         console.error("Errore verifica token:", err.message);
@@ -324,7 +263,7 @@ app.post('/api/auth/login', [
 // GET /api/auth/me (come prima)
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id).select('-password -passwordResetToken -passwordResetExpires');
+        const user = await User.findById(req.user.id).select('-password -passwordResetToken -passwordResetExpires'); 
         if (!user) {
             return res.status(404).json({ message: "Utente non trovato." });
         }
@@ -429,271 +368,83 @@ app.post('/api/auth/reset-password/:token', [
 // --- API Endpoints Menu (come prima, con riferimento a customizableOptions) ---
 app.get('/api/menu', async (req, res) => {
     try {
-        const menuItems = await MenuItem.find({ available: true })
-            .populate('category', 'name _id') // Popola nome e _id della categoria
-            .sort({ 'category.name': 1, name: 1 }); // Ordina per nome categoria, poi per nome item
-
-        res.json(menuItems.map(item => ({
-            _id: item._id, // Invia _id per future operazioni specifiche (es. modifica quantità nel carrello)
-            slug: item.slug,
-            name: item.name,
-            category: item.category ? item.category.name : 'Senza Categoria',
-            categoryId: item.category ? item.category._id : null,
-            price: item.price,
-            description: item.description,
-            image: item.image,
+        const menuItems = await MenuItem.find({ available: true });
+        res.json(menuItems.map(item => ({ // Includi customizableOptions se necessario al frontend
+            itemId: item.itemId, name: item.name, category: item.category,
+            price: item.price, description: item.description, image: item.image,
             available: item.available,
-            customizableOptions: item.customizableOptions
+            customizableOptions: item.customizableOptions // Aggiunto
         })));
-    } catch (error) {
-        console.error("Errore recupero menu per clienti:", error);
-        res.status(500).json({ message: "Errore recupero menu", error: error.message });
-    }
+    } catch (error) { res.status(500).json({ message: "Errore recupero menu", error: error.message }); }
 });
 
-app.get('/api/menu/all-items', /* authMiddleware, */ async (req, res) => {
+// ... (altri endpoint menu come /api/menu/all-items, POST, PUT, DELETE - potrebbero aver bisogno di gestire customizableOptions se modificabili dallo staff)
+// GET /api/menu/all-items (per staff)
+app.get('/api/menu/all-items', /* authMiddleware, TODO: Proteggere */ async (req, res) => {
     try {
-        const menuItems = await MenuItem.find()
-            .populate('category', 'name _id') // Popola nome e _id della categoria
-            .sort({ 'category.name': 1, name: 1 });
-        res.json(menuItems); // Invia l'oggetto completo con categoria popolata
-    } catch (error) {
-        console.error("Errore recupero menu per staff:", error);
-        res.status(500).json({ message: "Errore recupero articoli menu per staff", error: error.message });
-    }
+        const menuItems = await MenuItem.find().sort({ category: 1, name: 1 });
+        res.json(menuItems); // Invia l'intero oggetto, inclusi _id e customizableOptions
+    } catch (error) { res.status(500).json({ message: "Errore recupero articoli menu per staff", error: error.message }); }
 });
 
-// POST /api/menu/items
-app.post('/api/menu/items', /* authMiddleware, */ uploadMenuItemImage.single('imageFile'), [
+// POST /api/menu/items (per staff)
+app.post('/api/menu/items', /* authMiddleware, */ [
+    body('itemId', 'itemId è obbligatorio').not().isEmpty().trim(),
     body('name', 'Nome è obbligatorio').not().isEmpty().trim(),
-    body('category', 'Categoria è obbligatoria').isMongoId().withMessage('ID Categoria non valido.'), // Ora è un ObjectId
+    body('category', 'Categoria è obbligatoria').not().isEmpty().trim(),
     body('price', 'Prezzo è obbligatorio e deve essere un numero').isNumeric(),
+    // Aggiungere validazione per customizableOptions se inviate
 ], async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        if (req.file) fs.unlinkSync(req.file.path);
-        return res.status(400).json({ errors: errors.array() });
-    }
-
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
     try {
-        const { name, category, price, description, available } = req.body;
-        const slug = await generateUniqueSlug(name, MenuItem); // Genera slug univoco
-        let imagePath = null;
-        if (req.file) {
-            imagePath = `/uploads/menu_items/${req.file.filename}`;
-        } else if (req.body.image) { // Se l'utente ha fornito un URL testuale (mantenendo la logica precedente)
-             imagePath = req.body.image;
-        }
-
-
-        const newItemData = {
-            slug, name, category, price, description,
-            image: imagePath,
-            available: available === 'true' || available === true,
-        };
-         if (req.body.customizableOptions) {
-            try {
-                newItemData.customizableOptions = JSON.parse(req.body.customizableOptions);
-            } catch (parseError) {
-                console.warn("Opzioni personalizzabili non valide (POST):", req.body.customizableOptions, parseError);
-                newItemData.customizableOptions = []; // Fallback a array vuoto se il parsing fallisce
-            }
-        } else {
-            newItemData.customizableOptions = []; // Assicura che sia un array se non fornito
-        }
-
-
-        const newItem = new MenuItem(newItemData);
+        const { itemId, name, category, price, description, image, available, customizableOptions } = req.body;
+        const newItem = new MenuItem({ itemId, name, category, price, description, image, available, customizableOptions });
         await newItem.save();
-        const populatedItem = await MenuItem.findById(newItem._id).populate('category', 'name _id');
-        res.status(201).json(populatedItem);
+        res.status(201).json(newItem);
     } catch (error) {
-        if (req.file) fs.unlinkSync(req.file.path);
-        // Il controllo di unicità dello slug è gestito da generateUniqueSlug e dall'indice unique in Mongoose
-        if (error.code === 11000) { // Errore di duplicazione (probabilmente slug, se generateUniqueSlug fallisse)
-            return res.status(409).json({ message: `Errore di univocità, probabilmente per lo slug.` });
-        }
-        console.error("Errore POST /api/menu/items:", error);
-        res.status(500).json({ message: "Errore aggiunta articolo", error: error.message });
+        if (error.code === 11000) return res.status(409).json({ message: `L'articolo con itemId '${error.keyValue.itemId}' esiste già.` });
+        res.status(500).json({ message: "Errore aggiunta articolo al menu", error: error.message });
     }
 });
 
 // PUT /api/menu/items/:id (per staff)
-app.put('/api/menu/items/:id', /* authMiddleware, */ uploadMenuItemImage.single('imageFile'), [
-    body('name', 'Nome è obbligatorio').not().isEmpty().trim(),
-    body('category', 'Categoria è obbligatoria').isMongoId().withMessage('ID Categoria non valido.'),
-    body('price', 'Prezzo è obbligatorio e deve essere un numero').isNumeric(),
-    // Aggiungi qui altre validazioni se necessario, es. per 'available', 'description'
+app.put('/api/menu/items/:id', /* authMiddleware, */ [
+    // Aggiungere validatori
 ], async (req, res) => {
-    console.log(`Richiesta PUT a /api/menu/items/${req.params.id}`); // Log iniziale della richiesta
-    console.log("Body della richiesta:", req.body);
-    if (req.file) {
-        console.log("File caricato:", req.file);
-    }
-
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        console.error("Errore di validazione:", errors.array());
-        if (req.file) {
-            // Considera di eliminare il file solo se è stato effettivamente salvato e c'è un errore
-            // fs.unlinkSync(req.file.path); // Attenzione con unlinkSync in caso di errori precedenti
-        }
-        return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        console.error("ID Articolo non valido:", id);
-        // if (req.file) fs.unlinkSync(req.file.path); // Attenzione
-        return res.status(400).json({ message: "ID Articolo non valido." });
-    }
-
     try {
-        const itemToUpdate = await MenuItem.findById(id);
-        if (!itemToUpdate) {
-            console.warn("Articolo non trovato per l'ID:", id);
-            // if (req.file) fs.unlinkSync(req.file.path); // Attenzione
-            return res.status(404).json({ message: "Articolo non trovato." });
+        const { id } = req.params; // Questo è _id di MongoDB
+        const { name, category, price, description, image, available, itemId, customizableOptions } = req.body;
+        if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "ID articolo non valido." });
+        
+        if (itemId) { // Se si tenta di modificare itemId, verifica unicità
+            const existingItemWithNewItemId = await MenuItem.findOne({ itemId: itemId, _id: { $ne: id } });
+            if (existingItemWithNewItemId) return res.status(409).json({ message: `L'itemId '${itemId}' è già utilizzato da un altro articolo.` });
         }
 
-        console.log("Articolo trovato:", itemToUpdate.name);
-
-        const { name, category, price, description, available, image } = req.body; // 'image' qui è l'URL dell'immagine dal form
-
-        // Logica per lo slug (se il nome cambia, lo slug dovrebbe idealmente cambiare, ma gestisci con cautela per SEO/link diretti)
-        // Se il nome è cambiato e vuoi aggiornare lo slug:
-        // if (name !== itemToUpdate.name) {
-        //     itemToUpdate.slug = await generateUniqueSlug(name, MenuItem);
-        //     console.log("Slug aggiornato a:", itemToUpdate.slug);
-        // }
-        itemToUpdate.name = name;
-        itemToUpdate.category = category; // Assicurati che 'category' sia un ObjectId valido
-        itemToUpdate.price = parseFloat(price); // Assicurati che sia un numero
-        itemToUpdate.description = description !== undefined ? description : itemToUpdate.description;
-
-        // Gestione di 'available' che arriva come stringa 'true'/'false' da FormData
-        if (available === 'true') {
-            itemToUpdate.available = true;
-        } else if (available === 'false') {
-            itemToUpdate.available = false;
-        } else if (typeof available === 'boolean'){
-            itemToUpdate.available = available;
-        }
-        // Se 'available' non è presente nel FormData (es. checkbox non spuntata e nessun valore inviato),
-        // itemToUpdate.available manterrà il suo valore precedente se non lo imposti qui.
-        // FormData invierà il valore della checkbox solo se è spuntata. Se non è spuntata, il campo 'available' potrebbe non essere nel req.body.
-        // È più sicuro controllare esplicitamente:
-        // itemToUpdate.available = (req.body.available === 'true' || req.body.available === true);
-        // Se la checkbox non è spuntata, formData.get('available') sarà null.
-        // Quindi, se vuoi che una checkbox non spuntata significhi 'false':
-        itemToUpdate.available = formData.get('available') === 'true'; // formData.get('available') restituisce il valore se presente, altrimenti null
-
-
-        if (req.body.customizableOptions) {
-            try {
-                itemToUpdate.customizableOptions = JSON.parse(req.body.customizableOptions);
-            } catch (parseError) {
-                 console.warn("Opzioni personalizzabili non valide (PUT):", req.body.customizableOptions, parseError);
-                 // Mantieni quelle esistenti o decidi una strategia di fallback
-            }
-        }
-        console.log("Dati prima della gestione immagine:", JSON.parse(JSON.stringify(itemToUpdate)));
-
-
-        // Gestione Immagine
-        let oldImagePhysicalPath = null;
-        if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/')) {
-            oldImagePhysicalPath = path.join(__dirname, itemToUpdate.image);
-        }
-
-        if (req.file) { // Se un nuovo file è caricato
-            console.log("Nuovo file caricato:", req.file.filename);
-            if (oldImagePhysicalPath && fs.existsSync(oldImagePhysicalPath)) {
-                console.log("Tentativo eliminazione vecchia immagine fisica:", oldImagePhysicalPath);
-                try {
-                    fs.unlinkSync(oldImagePhysicalPath);
-                    console.log("Vecchia immagine fisica eliminata:", oldImagePhysicalPath);
-                } catch (unlinkErr) {
-                    console.error("Errore eliminazione vecchia immagine fisica:", unlinkErr);
-                    // Non bloccare l'operazione per questo, ma loggalo
-                }
-            }
-            itemToUpdate.image = `/uploads/menu_items/${req.file.filename}`;
-        } else if (image !== undefined) { // Se è stato fornito un campo 'image' (URL) nel form body
-            if (image === '' && itemToUpdate.image) { // L'utente vuole rimuovere l'immagine
-                console.log("Richiesta rimozione immagine esistente.");
-                if (oldImagePhysicalPath && fs.existsSync(oldImagePhysicalPath)) {
-                    console.log("Tentativo eliminazione immagine fisica da rimuovere:", oldImagePhysicalPath);
-                     try {
-                        fs.unlinkSync(oldImagePhysicalPath);
-                        console.log("Immagine fisica da rimuovere, eliminata:", oldImagePhysicalPath);
-                    } catch (unlinkErr) {
-                        console.error("Errore eliminazione immagine fisica da rimuovere:", unlinkErr);
-                    }
-                }
-                itemToUpdate.image = null; // O stringa vuota, a seconda delle preferenze
-            } else if (image !== itemToUpdate.image) { // L'URL è cambiato (e non è un file caricato)
-                 console.log("URL immagine modificato a:", image);
-                // Se l'immagine precedente era fisica e ora si usa un URL esterno, elimina quella fisica
-                if (oldImagePhysicalPath && fs.existsSync(oldImagePhysicalPath) && !image.startsWith('/uploads/menu_items/')) {
-                    console.log("Passaggio da immagine fisica a URL, eliminazione vecchia immagine fisica:", oldImagePhysicalPath);
-                    try {
-                        fs.unlinkSync(oldImagePhysicalPath);
-                        console.log("Vecchia immagine fisica eliminata con successo.");
-                    } catch (unlinkErr) {
-                        console.error("Errore eliminazione vecchia immagine fisica:", unlinkErr);
-                    }
-                }
-                itemToUpdate.image = image;
-            }
-        }
-        // Se né req.file né req.body.image sono forniti o modificati significativamente, itemToUpdate.image rimane invariato.
-
-        console.log("Articolo prima del salvataggio:", JSON.parse(JSON.stringify(itemToUpdate)));
-
-        await itemToUpdate.save();
-        console.log("Articolo salvato con successo.");
-
-        const populatedItem = await MenuItem.findById(itemToUpdate._id).populate('category', 'name _id');
-        res.json(populatedItem);
-
+        const updatedItem = await MenuItem.findByIdAndUpdate(id,
+            { name, category, price, description, image, available, itemId, customizableOptions },
+            { new: true, runValidators: true }
+        );
+        if (!updatedItem) return res.status(404).json({ message: "Articolo del menu non trovato." });
+        res.json(updatedItem);
     } catch (error) {
-        console.error(`ERRORE DETTAGLIATO in PUT /api/menu/items/${id}:`, error); // Log dell'errore specifico
-        // if (req.file) { // Se c'è un errore DOPO che il file è stato caricato, potresti volerlo eliminare
-        //     try { fs.unlinkSync(req.file.path); } catch (e) { console.error("Errore durante pulizia file dopo errore:", e); }
-        // }
-        if (error.code === 11000) {
-            return res.status(409).json({ message: `Conflitto di dati (probabilmente slug o altro campo univoco).`, error: error.message });
+        if (error.code === 11000 && error.keyPattern && error.keyPattern.itemId) {
+             return res.status(409).json({ message: `L'itemId '${error.keyValue.itemId}' è già utilizzato da un altro articolo.` });
         }
-        res.status(500).json({ message: "Errore modifica articolo", error: error.message });
+        res.status(500).json({ message: "Errore modifica articolo menu", error: error.message });
     }
 });
 
-// DELETE /api/menu/items/:id 
-app.delete('/api/menu/items/:id', /* authMiddleware, */ async (req, res) => {
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ message: "ID articolo non valido." });
-    }
+// DELETE /api/menu/items/:id (per staff) (come prima)
+app.delete('/api/menu/items/:id', /* authMiddleware, */ async (req, res) => { 
     try {
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "ID articolo non valido." });
         const deletedItem = await MenuItem.findByIdAndDelete(id);
-        if (!deletedItem) {
-            return res.status(404).json({ message: "Articolo non trovato." });
-        }
-        if (deletedItem.image && deletedItem.image.startsWith('/uploads/menu_items/')) {
-            const filePath = path.join(__dirname, deletedItem.image);
-            if (fs.existsSync(filePath)) {
-                fs.unlink(filePath, (err) => {
-                    if (err) console.error("Errore eliminazione file immagine associata:", err);
-                    else console.log(`File immagine ${filePath} eliminato.`);
-                });
-            }
-        }
-        res.json({ message: "Articolo eliminato con successo.", deletedItem });
-    } catch (error) {
-        console.error(`Errore DELETE /api/menu/items/${id}:`, error);
-        res.status(500).json({ message: "Errore eliminazione articolo", error: error.message });
-    }
+        if (!deletedItem) return res.status(404).json({ message: "Articolo del menu non trovato." });
+        res.json({ message: "Articolo del menu eliminato con successo.", deletedItem });
+    } catch (error) { res.status(500).json({ message: "Errore eliminazione articolo menu", error: error.message }); }
 });
 
 
@@ -710,7 +461,7 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
         const newOrderIdString = await generateOrderId();
         const activeOrdersInQueue = await Order.countDocuments({ status: { $nin: [ORDER_STATUSES.SERVITO, ORDER_STATUSES.ANNULLATO] } });
         const waitTimeInfo = calculateEstimatedWaitTime(activeOrdersInQueue);
-
+        
         let calculatedTotalAmount = 0;
         const orderItems = [];
 
@@ -729,7 +480,7 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
                 customizations: typeof cartItem.customizations === 'string' ? cartItem.customizations : (Array.isArray(cartItem.customizations) ? cartItem.customizations.join(', ') : undefined)
             });
         }
-
+        
         const orderData = {
             orderId: newOrderIdString,
             customerName: req.user ? req.user.name : customerName,
@@ -749,9 +500,9 @@ app.post('/api/orders', authMiddleware, async (req, res) => {
         const savedOrder = await newOrder.save();
         console.log(`Nuovo ordine salvato nel DB: ${savedOrder.orderId} da ${orderData.customerName}`);
         res.status(201).json({
-            orderId: savedOrder.orderId,
+            orderId: savedOrder.orderId, 
             customerName: savedOrder.customerName,
-            estimatedWaitTime: `${waitTimeInfo.min}-${waitTimeInfo.max} minuti`,
+            estimatedWaitTime: `${waitTimeInfo.min}-${waitTimeInfo.max} minuti`, 
             orderDetails: savedOrder // Invia l'ordine completo come conferma
         });
     } catch (error) {
@@ -881,9 +632,9 @@ app.delete('/api/users/me/favorites/:favoriteId', authMiddleware, async (req, re
 
         const favoriteIdToRemove = req.params.favoriteId;
         if (!mongoose.Types.ObjectId.isValid(favoriteIdToRemove)) {
-            return res.status(400).json({ message: 'ID preferito non valido.' });
+             return res.status(400).json({ message: 'ID preferito non valido.' });
         }
-
+        
         const initialLength = user.favoriteOrders.length;
         user.favoriteOrders.pull({ _id: favoriteIdToRemove }); // Metodo Mongoose per rimuovere da array di subdocument
 
@@ -896,82 +647,6 @@ app.delete('/api/users/me/favorites/:favoriteId', authMiddleware, async (req, re
     } catch (error) {
         console.error("Errore rimozione ordine preferito:", error);
         res.status(500).json({ message: 'Errore durante la rimozione dell\'ordine preferito.' });
-    }
-});
-
-// --- API Endpoints Categorie (NUOVI) ---
-app.get('/api/categories', /* authMiddleware, */ async (req, res) => {
-    try {
-        const categories = await Category.find().sort({ name: 1 });
-        res.json(categories);
-    } catch (error) {
-        res.status(500).json({ message: "Errore recupero categorie", error: error.message });
-    }
-});
-
-app.post('/api/categories', /* authMiddleware, */ [
-    body('name', 'Il nome della categoria è obbligatorio').not().isEmpty().trim(),
-], async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    try {
-        const { name, description } = req.body;
-        let existingCategory = await Category.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
-        if (existingCategory) return res.status(409).json({ message: `Categoria '${name}' già esistente.` });
-
-        const newCategory = new Category({ name, description });
-        await newCategory.save();
-        res.status(201).json(newCategory);
-    } catch (error) {
-        console.error("Errore creazione categoria:", error);
-        res.status(500).json({ message: "Errore creazione categoria", error: error.message });
-    }
-});
-
-app.put('/api/categories/:id', /* authMiddleware, */ [
-    body('name', 'Il nome della categoria è obbligatorio').not().isEmpty().trim(),
-], async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "ID Categoria non valido" });
-
-    try {
-        const { name, description } = req.body;
-        const categoryToUpdate = await Category.findById(id);
-        if (!categoryToUpdate) return res.status(404).json({ message: "Categoria non trovata" });
-
-        // Controlla se il nuovo nome è già usato da un'altra categoria
-        if (name.toLowerCase() !== categoryToUpdate.name.toLowerCase()) {
-            const existingCategory = await Category.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') }, _id: { $ne: id } });
-            if (existingCategory) return res.status(409).json({ message: `Nome categoria '${name}' già in uso.` });
-        }
-        
-        categoryToUpdate.name = name;
-        categoryToUpdate.description = description !== undefined ? description : categoryToUpdate.description;
-        await categoryToUpdate.save();
-        res.json(categoryToUpdate);
-    } catch (error) {
-        console.error("Errore aggiornamento categoria:", error);
-        res.status(500).json({ message: "Errore aggiornamento categoria", error: error.message });
-    }
-});
-
-app.delete('/api/categories/:id', /* authMiddleware, */ async (req, res) => {
-    const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "ID Categoria non valido" });
-    try {
-        const itemsUsingCategory = await MenuItem.countDocuments({ category: id });
-        if (itemsUsingCategory > 0) {
-            return res.status(400).json({ message: `Impossibile eliminare: ${itemsUsingCategory} articoli usano questa categoria.` });
-        }
-        const deletedCategory = await Category.findByIdAndDelete(id);
-        if (!deletedCategory) return res.status(404).json({ message: "Categoria non trovata" });
-        res.json({ message: "Categoria eliminata", deletedCategory });
-    } catch (error) {
-        console.error("Errore eliminazione categoria:", error);
-        res.status(500).json({ message: "Errore eliminazione categoria", error: error.message });
     }
 });
 
@@ -996,13 +671,13 @@ app.get('/reset-password.html', (req, res) => {
 
 
 app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api') && !req.path.includes('.')) {
-        res.sendFile(path.join(__dirname, 'public', 'index.html'));
-    } else if (req.path.startsWith('/api')) {
-        res.status(404).send('API endpoint not found');
-    }
-    // Non aggiungere un 'else' che invia index.html qui,
-    // altrimenti le richieste a file statici non API (es. /script.js) fallirebbero se non trovate prima
+  if (!req.path.startsWith('/api') && !req.path.includes('.')) {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  } else if (req.path.startsWith('/api')) {
+    res.status(404).send('API endpoint not found');
+  }
+  // Non aggiungere un 'else' che invia index.html qui,
+  // altrimenti le richieste a file statici non API (es. /script.js) fallirebbero se non trovate prima
 });
 
 app.listen(PORT, () => {
