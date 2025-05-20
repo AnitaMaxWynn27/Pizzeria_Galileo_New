@@ -9,6 +9,7 @@ const customerApp = {
     authToken: null,
     trackingIntervalId: null,
     TRACKING_INTERVAL_MS: 1000,
+    currentConfirmedOrderDetails: null, // Per memorizzare i dettagli dell'ordine da salvare
 
     ORDER_STATUSES: { RICEVUTO: 'Ricevuto', IN_PREPARAZIONE: 'In Preparazione', PRONTO: 'Pronto per il Ritiro/Consegna', SERVITO: 'Servito/Consegnato', ANNULLATO: 'Annullato' },
     ORDER_STATUS_CLASSES: { RICEVUTO: 'status-ricevuto', IN_PREPARAZIONE: 'status-in-preparazione', PRONTO: 'status-pronto', SERVITO: 'status-servito', ANNULLATO: 'status-annullato' },
@@ -70,6 +71,16 @@ const customerApp = {
             });
         }
 
+        document.getElementById('nav-favorite-orders').addEventListener('click', async () => {
+            customerApp.showView('favorite-orders-view');
+            await customerApp.loadFavoriteOrders();
+        });
+
+        const saveAsFavoriteBtn = document.getElementById('save-as-favorite-btn');
+        if (saveAsFavoriteBtn) {
+            saveAsFavoriteBtn.addEventListener('click', customerApp.handleSaveAsFavorite);
+        }
+
         // Event Listeners per Password Dimenticata
         const goToForgotPasswordLink = document.getElementById('go-to-forgot-password-link');
         if (goToForgotPasswordLink) { // Aggiungi un controllo se l'elemento esiste (dovrebbe essere in index.html)
@@ -117,9 +128,9 @@ const customerApp = {
             if ((customerApp.currentUser.role === 'staff' || customerApp.currentUser.role === 'admin') && customerApp.currentUser.isActive) {
                 // Controlla che non siamo già in un tentativo di redirect infinito
                 if (window.location.pathname !== '/staff' && window.location.pathname !== '/staff.html') {
-                     console.log('Utente staff rilevato, reindirizzamento al pannello staff...');
-                     window.location.href = '/staff'; // Reindirizza al pannello staff
-                     return; // Interrompi l'init di customerApp se reindirizziamo
+                    console.log('Utente staff rilevato, reindirizzamento al pannello staff...');
+                    window.location.href = '/staff'; // Reindirizza al pannello staff
+                    return; // Interrompi l'init di customerApp se reindirizziamo
                 }
             }
             // Se è un cliente o lo staff è già su /staff (non dovrebbe eseguire questo init), carica il menu
@@ -273,8 +284,8 @@ const customerApp = {
                 throw new Error(data.message || 'Errore di login');
             }
             if (!data.user.isActive) { // Ulteriore controllo se il backend non l'ha già fatto
-                 customerApp.displayMessage('Account non attivo. Contatta l\'amministrazione.', 'error');
-                 return;
+                customerApp.displayMessage('Account non attivo. Contatta l\'amministrazione.', 'error');
+                return;
             }
             customerApp.saveTokenAndUser(data.token, data.user);
             customerApp.updateNavUI();
@@ -436,20 +447,19 @@ const customerApp = {
             headers['Authorization'] = `Bearer ${customerApp.authToken}`;
         }
         const submitButton = document.getElementById('submit-order');
-        const originalButtonHTML = submitButton.innerHTML; // Salva l'HTML originale
+        const originalButtonHTML = submitButton.innerHTML;
         submitButton.disabled = true;
         submitButton.innerHTML = `
             <svg class="animate-spin h-5 w-5 mr-3 inline" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
             Invio in corso...`;
 
-        // customerApp.cart items already have 'itemId' as the _id from addToCart
         try {
             const response = await fetch(`${customerApp.API_BASE_URL}/api/orders`, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify({ customerName: customerName, cart: customerApp.cart })
             });
-            const result = await response.json();
+            const result = await response.json(); // result conterrà orderDetails
             if (!response.ok) {
                 const errorMsg = result.errors ? result.errors.map(e => e.msg).join(', ') : (result.message || `Errore HTTP: ${response.status}`);
                 throw new Error(errorMsg);
@@ -462,13 +472,40 @@ const customerApp = {
             const confOrderSummaryEl = document.getElementById('conf-order-summary');
             if (confOrderSummaryEl) {
                 confOrderSummaryEl.innerHTML = '<h4 class="font-semibold text-md mb-2 text-gray-800">Riepilogo Ordine:</h4>';
-                let orderTotal = 0;
+                let orderTotal = 0; // Calcoliamo il totale dal riepilogo se non fornito direttamente per currentConfirmedOrderDetails
                 result.orderDetails.items.forEach(item => {
                     confOrderSummaryEl.innerHTML += `<p class="text-sm">${item.name} (x${item.quantity}) - € ${(item.price * item.quantity).toFixed(2)}</p>`;
+                    if (item.customizations) {
+                        confOrderSummaryEl.innerHTML += `<p class="text-xs pl-4 text-gray-500"><em>Personalizzazioni: ${item.customizations}</em></p>`;
+                    }
                     orderTotal += item.price * item.quantity;
                 });
                 confOrderSummaryEl.innerHTML += `<p class="font-semibold mt-1">Totale: € ${orderTotal.toFixed(2)}</p>`;
             }
+
+            customerApp.currentConfirmedOrderDetails = {
+                items: result.orderDetails.items.map(item => ({
+                    itemId: item.itemId, // Questo DEVE essere l'_id del MenuItem come restituito dal backend
+                    originalItemId: item.originalItemId || item.itemId,
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity,
+                    customizations: item.customizations || ''
+                })),
+                // Usa il totalAmount dagli orderDetails se presente, altrimenti ricalcola
+                totalAmount: typeof result.orderDetails.totalAmount !== 'undefined'
+                    ? result.orderDetails.totalAmount
+                    : result.orderDetails.items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+            };
+
+            const saveAsFavoriteBtn = document.getElementById('save-as-favorite-btn');
+            if (customerApp.currentUser && saveAsFavoriteBtn) {
+                saveAsFavoriteBtn.style.display = 'inline-block';
+                saveAsFavoriteBtn.disabled = false; // Assicurati che sia abilitato
+            } else if (saveAsFavoriteBtn) {
+                saveAsFavoriteBtn.style.display = 'none';
+            }
+            // ***** FINE MODIFICHE CRUCIALI RIPRISTINATE/AGGIUNTE QUI *****
 
             customerApp.showView('order-confirmation-view');
             customerApp.cart = [];
@@ -480,7 +517,7 @@ const customerApp = {
             customerApp.displayMessage(`Errore invio ordine: ${error.message}`, 'error');
         } finally {
             submitButton.disabled = false;
-            submitButton.innerHTML = originalButtonHTML; // Ripristina l'HTML originale
+            submitButton.innerHTML = originalButtonHTML;
         }
     },
 
@@ -579,9 +616,9 @@ const customerApp = {
 
         if (itemsToRender.length === 0) {
             if (isFilteredRender || document.getElementById('menu-search-input')?.value.trim() !== '') {
-                 noMenuItemsMessage.textContent = 'Nessun articolo trovato per i filtri selezionati.';
+                noMenuItemsMessage.textContent = 'Nessun articolo trovato per i filtri selezionati.';
             } else {
-                 noMenuItemsMessage.textContent = 'Nessun articolo disponibile nel menu al momento.';
+                noMenuItemsMessage.textContent = 'Nessun articolo disponibile nel menu al momento.';
             }
             noMenuItemsMessage.style.display = 'block';
             return;
@@ -723,6 +760,12 @@ const customerApp = {
             if (trackInput) trackInput.value = '';
             if (trackResults) trackResults.innerHTML = '';
         }
+
+        if (viewId !== 'order-confirmation-view') {
+            const saveAsFavoriteBtn = document.getElementById('save-as-favorite-btn');
+            if (saveAsFavoriteBtn) saveAsFavoriteBtn.style.display = 'none';
+            customerApp.currentConfirmedOrderDetails = null;
+        }
     },
     displayUserProfile: async function () {
         if (!customerApp.currentUser) {
@@ -839,7 +882,7 @@ const customerApp = {
             }
         }
     },
-    
+
     addToCart: function (idFromButton, buttonElement) { // idFromButton is now _id
         const menuItem = customerApp.currentMenu.find(item => item._id === idFromButton);
         if (!menuItem) {
@@ -849,17 +892,17 @@ const customerApp = {
         }
 
         // The identifier in the cart will be 'itemId', which will hold the product's _id
-        const cartItem = customerApp.cart.find(item => item.itemId === menuItem._id); 
+        const cartItem = customerApp.cart.find(item => item.itemId === menuItem._id);
         if (cartItem) {
             cartItem.quantity++;
         } else {
             // Store _id as itemId in the cart for consistency with the backend (orderItemSchema.itemId)
             // Also include originalItemId if needed by backend/order processing, though here it's the same as itemId
-            customerApp.cart.push({ 
-                itemId: menuItem._id, 
-                name: menuItem.name, 
-                price: menuItem.price, 
-                quantity: 1, 
+            customerApp.cart.push({
+                itemId: menuItem._id,
+                name: menuItem.name,
+                price: menuItem.price,
+                quantity: 1,
                 originalItemId: menuItem._id, // Assuming originalItemId is also the _id for non-customized items
                 // customizations: [] // or appropriate default if you handle customizations
             });
@@ -893,6 +936,255 @@ const customerApp = {
         }
         customerApp.updateCartDisplay();
     },
+
+    handleSaveAsFavorite: async function () {
+        if (!customerApp.currentUser) {
+            customerApp.displayMessage('Devi essere loggato per salvare un ordine come preferito.', 'error');
+            return;
+        }
+        // currentConfirmedOrderDetails è già stato impostato in submitOrder
+        if (!customerApp.currentConfirmedOrderDetails || !customerApp.currentConfirmedOrderDetails.items || customerApp.currentConfirmedOrderDetails.items.length === 0) {
+            customerApp.displayMessage('Dettagli ordine non disponibili per il salvataggio.', 'error');
+            // Questo potrebbe accadere se l'utente arriva a questa funzione senza passare da submitOrder
+            // o se currentConfirmedOrderDetails non è stato popolato correttamente.
+            console.error("currentConfirmedOrderDetails non è valido:", customerApp.currentConfirmedOrderDetails);
+            return;
+        }
+
+        const favoriteOrderPayload = {
+            items: customerApp.currentConfirmedOrderDetails.items.map(item => ({
+                itemId: item.itemId,
+                originalItemId: item.originalItemId || item.itemId,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity,
+                customizations: item.customizations || ''
+            })),
+            totalAmount: customerApp.currentConfirmedOrderDetails.totalAmount
+        };
+
+        const saveButton = document.getElementById('save-as-favorite-btn');
+        const originalButtonText = saveButton.innerHTML; // Salva l'HTML intero
+        saveButton.disabled = true;
+        saveButton.innerHTML = `<svg class="animate-spin h-5 w-5 mr-3 inline" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Salvataggio...`;
+
+        try {
+            const response = await fetch(`${customerApp.API_BASE_URL}/api/users/me/favorites`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${customerApp.authToken}`
+                },
+                body: JSON.stringify(favoriteOrderPayload)
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || 'Errore nel salvataggio dell\'ordine preferito.');
+            }
+            customerApp.displayMessage('Ordine salvato nei preferiti con successo!', 'success');
+            saveButton.style.display = 'none'; // Nascondi il pulsante dopo il salvataggio
+        } catch (error) {
+            console.error("Errore salvataggio ordine preferito:", error);
+            customerApp.displayMessage(error.message || 'Impossibile salvare l\'ordine preferito.', 'error');
+        } finally {
+            saveButton.disabled = false;
+            saveButton.innerHTML = originalButtonText; // Ripristina l'HTML originale
+        }
+    },
+
+    loadFavoriteOrders: async function () {
+        const favList = document.getElementById('user-favorite-orders-list');
+        const loadingPlaceholder = document.getElementById('favorite-orders-loading-placeholder');
+        if (!favList || !loadingPlaceholder) return;
+
+        favList.innerHTML = '';
+        loadingPlaceholder.style.display = 'block';
+
+        if (!customerApp.authToken) {
+            favList.innerHTML = '<p class="text-red-500 text-center py-4">Devi effettuare il login per vedere i tuoi ordini preferiti.</p>';
+            loadingPlaceholder.style.display = 'none';
+            return;
+        }
+
+        try {
+            const response = await fetch(`${customerApp.API_BASE_URL}/api/users/me/favorites`, {
+                headers: { 'Authorization': `Bearer ${customerApp.authToken}` }
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || `Errore caricamento preferiti: ${response.status}`);
+            }
+            const favorites = await response.json();
+            loadingPlaceholder.style.display = 'none';
+
+            if (favorites.length === 0) {
+                favList.innerHTML = '<p class="text-gray-500 text-center py-4">Non hai ancora ordini preferiti.</p>';
+                return;
+            }
+
+            favorites.forEach(favOrder => { // favOrder.items dovrebbe già avere l'ID corretto come 'itemId'
+                const favCard = document.createElement('div');
+                favCard.className = 'card order-card p-4 mb-4 shadow-md'; // Riusa classe simile
+                let itemsHtml = '<ul class="list-disc list-inside text-sm text-gray-600 mt-1 pl-1">';
+                favOrder.items.forEach(item => {
+                    itemsHtml += `<li>${item.name} (x${item.quantity}) - €${(item.price * item.quantity).toFixed(2)}</li>`;
+                    if (item.customizations) { // Mostra personalizzazioni se presenti
+                        itemsHtml += `<li class="text-xs pl-4 text-gray-500"><em>Personalizzazioni: ${item.customizations}</em></li>`;
+                    }
+                });
+                itemsHtml += '</ul>';
+
+                favCard.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
+                        <h4 class="text-lg font-semibold text-red-700">Preferito Salvato il ${new Date(favOrder.savedAt).toLocaleDateString('it-IT')}</h4>
+                        <button class="btn btn-red btn-sm remove-favorite-btn" data-favorite-id="${favOrder._id}" aria-label="Rimuovi questo preferito">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.58.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd"></path></svg>
+                        </button>
+                    </div>
+                    <div class="mt-2"><strong>Articoli:</strong>${itemsHtml}</div>
+                    <p class="text-md font-semibold mt-2">Totale: €${favOrder.totalAmount.toFixed(2)}</p>
+                    <button class="btn btn-primary btn-sm mt-4 reorder-favorite-btn" data-favorite-id="${favOrder._id}">Riordina Questo</button>
+                `;
+                favList.appendChild(favCard);
+            });
+
+            document.querySelectorAll('.reorder-favorite-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const favoriteId = e.currentTarget.dataset.favoriteId;
+                    const favoriteOrder = favorites.find(fav => fav._id === favoriteId);
+                    if (favoriteOrder) {
+                        customerApp.reorderFavorite(favoriteOrder);
+                    }
+                });
+            });
+
+            document.querySelectorAll('.remove-favorite-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const favoriteId = e.currentTarget.dataset.favoriteId;
+                    if (confirm('Sei sicuro di voler rimuovere questo ordine dai preferiti?')) {
+                        await customerApp.removeFavoriteOrder(favoriteId);
+                    }
+                });
+            });
+
+        } catch (error) {
+            console.error('Errore caricamento ordini preferiti:', error);
+            loadingPlaceholder.style.display = 'none';
+            favList.innerHTML = `<p class="text-red-500 text-center py-4">Impossibile caricare gli ordini preferiti: ${error.message}</p>`;
+        }
+    },
+
+    reorderFavorite: async function (favoriteOrder) {
+        console.log("Inizio Riordina Preferito. Dati Ordine Preferito:", JSON.parse(JSON.stringify(favoriteOrder)));
+
+        if (!customerApp.currentMenu || customerApp.currentMenu.length === 0) {
+            customerApp.displayMessage('Caricamento menu in corso, attendere e riprovare.', 'info');
+            await customerApp.loadMenu();
+            if (!customerApp.currentMenu || customerApp.currentMenu.length === 0) {
+                customerApp.displayMessage('Impossibile caricare il menu per riordinare. Menu vuoto.', 'error');
+                console.error("Menu ancora vuoto dopo il tentativo di caricamento in reorderFavorite.");
+                return;
+            }
+        }
+        // console.log("Menu Corrente Usato per il Riordino:", JSON.parse(JSON.stringify(customerApp.currentMenu.slice(0, 5))));
+
+        if (customerApp.cart.length > 0) {
+            if (!confirm("Il tuo carrello attuale non è vuoto. Svuotarlo per aggiungere gli articoli dell'ordine preferito?")) {
+                return;
+            }
+        }
+        customerApp.cart = [];
+
+        let itemsSuccessfullyAdded = 0;
+        let itemsNotFoundOrUnavailable = [];
+
+        if (!favoriteOrder.items || favoriteOrder.items.length === 0) {
+            customerApp.displayMessage('L\'ordine preferito selezionato non contiene articoli.', 'error');
+            console.error("L'oggetto favoriteOrder non ha items o items è vuoto:", favoriteOrder);
+            return;
+        }
+
+        for (const favItem of favoriteOrder.items) {
+            // ***** MODIFICA CRUCIALE QUI: USA favItem.originalItemId *****
+            console.log(`Processo l'articolo preferito: ${favItem.name}, ID salvato (originalItemId): ${favItem.originalItemId}`);
+            const menuItem = customerApp.currentMenu.find(m => {
+                return String(m._id) === String(favItem.originalItemId); // Confronta con originalItemId
+            });
+
+            if (menuItem) {
+                console.log(`Articolo trovato nel menu: ${menuItem.name}, Disponibile: ${menuItem.available}`);
+                if (menuItem.available) {
+                    customerApp.cart.push({
+                        itemId: menuItem._id, // L'itemId nel carrello è l'_id del prodotto nel menu
+                        name: menuItem.name,
+                        price: menuItem.price,
+                        quantity: favItem.quantity,
+                        originalItemId: menuItem._id, // Per coerenza, anche se preso da favItem.originalItemId
+                        customizations: favItem.customizations || ''
+                    });
+                    itemsSuccessfullyAdded++;
+                    console.log(`Aggiunto al carrello: ${menuItem.name}`);
+                } else {
+                    itemsNotFoundOrUnavailable.push(`${favItem.name} (non disponibile)`);
+                    console.log(`Articolo Trovato ma NON DISPONIBILE: ${favItem.name}`);
+                }
+            } else {
+                itemsNotFoundOrUnavailable.push(`${favItem.name} (non trovato nel menu attuale con ID: ${favItem.originalItemId})`);
+                console.log(`Articolo NON TROVATO nel menu: ${favItem.name} con ID ${favItem.originalItemId}`);
+            }
+        }
+
+        customerApp.updateCartDisplay();
+        customerApp.showView('customer-order-view');
+        const menuCategoriesElement = document.getElementById('menu-categories');
+        if (menuCategoriesElement) {
+            menuCategoriesElement.scrollIntoView({ behavior: "smooth" });
+        }
+
+        if (itemsSuccessfullyAdded > 0 && itemsNotFoundOrUnavailable.length === 0) {
+            customerApp.displayMessage(`Articoli dall'ordine preferito aggiunti al carrello. Controlla e procedi!`, 'success');
+        } else if (itemsSuccessfullyAdded > 0 && itemsNotFoundOrUnavailable.length > 0) {
+            customerApp.displayMessage(`Alcuni articoli aggiunti. Altri non trovati/disponibili: ${itemsNotFoundOrUnavailable.join(', ')}`, 'warning', 6000);
+        } else if (itemsSuccessfullyAdded === 0 && itemsNotFoundOrUnavailable.length > 0) {
+            customerApp.displayMessage(`Nessun articolo dall'ordine preferito pudo essere aggiunto al carrello. Dettagli: ${itemsNotFoundOrUnavailable.join(', ')}`, 'error', 7000);
+        } else if (itemsSuccessfullyAdded === 0 && itemsNotFoundOrUnavailable.length === 0 && favoriteOrder.items.length > 0) {
+            customerApp.displayMessage(`Impossibile processare gli articoli dell'ordine preferito. Controllare la console per dettagli.`, 'error');
+            console.error("Logica di riordino fallita in modo imprevisto.");
+        } else if (itemsSuccessfullyAdded === 0 && itemsNotFoundOrUnavailable.length === 0 && favoriteOrder.items.length === 0) {
+            customerApp.displayMessage(`L'ordine preferito era vuoto.`, 'warning');
+        }
+    },
+
+    removeFavoriteOrder: async function (favoriteId) {
+        if (!customerApp.authToken) return;
+        try {
+            const response = await fetch(`${customerApp.API_BASE_URL}/api/users/me/favorites/${favoriteId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${customerApp.authToken}` }
+            });
+
+            // Il resto della funzione per gestire la risposta
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.message || 'Errore rimozione ordine preferito.');
+                }
+                customerApp.displayMessage('Ordine preferito rimosso con successo!', 'success');
+                await customerApp.loadFavoriteOrders(); // Ricarica la lista
+            } else {
+                // Se non è JSON, leggi come testo per vedere cosa è arrivato
+                const textResponse = await response.text();
+                console.error("Risposta non JSON dal server:", textResponse);
+                throw new Error('Il server non ha risposto con JSON. Controlla la console del browser e del server.');
+            }
+        } catch (error) {
+            console.error("Errore rimozione ordine preferito:", error);
+            customerApp.displayMessage(error.message || 'Impossibile rimuovere l\'ordine preferito.', 'error');
+        }
+    },
+
+
 
     updateCartDisplay: function () {
         const cartItemsContainer = document.getElementById('cart-items');
