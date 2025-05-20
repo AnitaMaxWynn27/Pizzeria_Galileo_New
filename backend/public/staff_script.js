@@ -1,6 +1,8 @@
 // backend/public/staff_script.js
 const staffApp = {
     API_BASE_URL: '', // Lasciato vuoto, il frontend è servito dallo stesso server
+    authToken: null,       // NUOVO: Per memorizzare il token JWT
+    currentUser: null,     // NUOVO: Per memorizzare i dettagli dell'utente staff
     queueRefreshIntervalId: null, // ID per l'intervallo di aggiornamento automatico della coda
     QUEUE_REFRESH_INTERVAL_MS: 1000, // Aggiorna ogni 1 secondi
     editingMenuItemId: null, // Per tenere traccia dell'ID MongoDB (_id) dell'articolo in modifica
@@ -29,6 +31,30 @@ const staffApp = {
      * - Avvia l'aggiornamento automatico per la sezione attiva di default.
      */
     init: async function () {
+        staffApp.loadTokenAndUser(); // Carica token e utente da localStorage
+
+        // Controllo autenticazione e autorizzazione
+        if (!staffApp.authToken || !staffApp.currentUser || 
+            (staffApp.currentUser.role !== 'staff' && staffApp.currentUser.role !== 'admin')) {
+            // Rimuovi l'alert per un reindirizzamento più pulito
+            // alert('Accesso negato. Verrai reindirizzato al login.'); 
+            window.location.href = '/'; // Reindirizza alla pagina principale
+            return; // Interrompi l'inizializzazione del pannello staff
+        }
+
+        if (!staffApp.currentUser.isActive) {
+            // Rimuovi l'alert
+            // alert('Account staff non attivo. Contatta l\'amministrazione.');
+            localStorage.removeItem('pizzeriaAuthToken'); // Pulisci token
+            localStorage.removeItem('pizzeriaUser');    // Pulisci utente
+            window.location.href = '/';
+            return;
+        }
+
+        // Se tutti i controlli sono superati, rendi visibile il corpo della pagina
+        document.body.style.display = 'block';
+
+        // ---- IL RESTO DELLA FUNZIONE init() CONTINUA DA QUI ----
         // Navigazione a Schede
         document.getElementById('nav-tab-orders').addEventListener('click', () => staffApp.showStaffSection('staff-orders-view'));
         document.getElementById('nav-tab-menu').addEventListener('click', () => staffApp.showStaffSection('staff-menu-view'));
@@ -45,9 +71,78 @@ const staffApp = {
         document.getElementById('category-form').addEventListener('submit', staffApp.handleSaveCategory);
         document.getElementById('cancel-edit-category-btn').addEventListener('click', staffApp.resetCategoryForm);
 
-        staffApp.showStaffSection('staff-orders-view');
-        staffApp.loadAndRenderMenuItems();
-        staffApp.loadAndRenderCategories();
+        const logoutButton = document.getElementById('staff-logout-btn');
+        if (logoutButton) {
+            logoutButton.addEventListener('click', staffApp.logout);
+        }
+        const staffUsernameEl = document.getElementById('staff-username');
+        if(staffUsernameEl && staffApp.currentUser) {
+            staffUsernameEl.textContent = staffApp.currentUser.name;
+        }
+        
+        // Carica i dati e mostra la sezione di default
+        // Queste chiamate ora avvengono solo se l'utente è autorizzato e il body è visibile
+        await staffApp.loadAndRenderMenuItems(); // Chiamata spostata per assicurare che il DOM sia pronto
+        await staffApp.loadAndRenderCategories(); // Chiamata spostata
+        staffApp.showStaffSection('staff-orders-view'); // Mostra la sezione ordini di default
+    },
+
+    // NUOVO: Funzioni per caricare/salvare/pulire token e utente (simili a quelle in script.js)
+    loadTokenAndUser: function () { //
+        const token = localStorage.getItem('pizzeriaAuthToken');
+        const userString = localStorage.getItem('pizzeriaUser');
+        if (token && userString) {
+            staffApp.authToken = token;
+            try {
+                staffApp.currentUser = JSON.parse(userString);
+            } catch (e) {
+                console.error("Errore parsing utente staff da localStorage", e);
+                staffApp.clearTokenAndUser();
+            }
+        }
+    },
+
+    clearTokenAndUser: function () {
+        staffApp.authToken = null;
+        staffApp.currentUser = null;
+        localStorage.removeItem('pizzeriaAuthToken');
+        localStorage.removeItem('pizzeriaUser');
+    },
+
+    logout: function() {
+        staffApp.clearTokenAndUser();
+        alert('Logout effettuato.');
+        window.location.href = '/'; // Reindirizza alla pagina principale
+    },
+
+    fetchWithAuth: async function (url, options = {}) {
+        const headers = {
+            ...options.headers,
+            'Content-Type': 'application/json', // Assumiamo JSON per la maggior parte, FormData lo gestirà da sé
+        };
+        if (staffApp.authToken) {
+            headers['Authorization'] = `Bearer ${staffApp.authToken}`;
+        }
+        
+        // Per FormData, non impostare Content-Type, il browser lo fa
+        if (options.body instanceof FormData) {
+            delete headers['Content-Type'];
+        }
+
+        try {
+            const response = await fetch(url, { ...options, headers });
+            if (response.status === 401 || response.status === 403) { // Non autorizzato o Accesso negato
+                staffApp.logout(); // Effettua il logout se il token non è valido o i permessi sono insufficienti
+                throw new Error('Sessione scaduta o permessi non validi. Effettuare nuovamente il login.');
+            }
+            return response;
+        } catch (error) {
+            // Se l'errore è dovuto al logout, non mostrare un altro messaggio
+            if (!error.message.includes('Sessione scaduta')) {
+                 staffApp.displayMessage(`Errore di rete o server: ${error.message}`, 'error', document.getElementById('message-area-staff'));
+            }
+            throw error; // Rilancia l'errore per essere gestito dal chiamante
+        }
     },
 
     showStaffSection: function (sectionId) {
@@ -135,7 +230,7 @@ const staffApp = {
             return;
         }
         try {
-            const response = await fetch(`${staffApp.API_BASE_URL}/api/categories`);
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/categories`);
             if (!response.ok) throw new Error(`Errore HTTP: ${response.status} - ${await response.text()}`);
             const categories = await response.json();
 
@@ -195,7 +290,7 @@ const staffApp = {
         const method = categoryId ? 'PUT' : 'POST';
 
         try {
-            const response = await fetch(url, {
+            const response = await staffApp.fetchWithAuth(url, {
                 method: method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, description })
@@ -231,7 +326,7 @@ const staffApp = {
         staffApp.editingCategoryId = categoryId;
 
         try {
-            const response = await fetch(`${staffApp.API_BASE_URL}/api/categories`);
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/categories`);
             if (!response.ok) throw new Error('Impossibile recuperare i dettagli della categoria.');
             const allCategories = await response.json();
             const categoryToEdit = allCategories.find(cat => cat._id === categoryId);
@@ -277,7 +372,7 @@ const staffApp = {
         }
 
         try {
-            const response = await fetch(`${staffApp.API_BASE_URL}/api/categories/${categoryId}`, {
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/categories/${categoryId}`, {
                 method: 'DELETE'
             });
             const result = await response.json();
@@ -320,7 +415,7 @@ const staffApp = {
         if (!selectElement) return;
 
         try {
-            const response = await fetch(`${staffApp.API_BASE_URL}/api/categories`);
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/categories`);
             if (!response.ok) throw new Error('Errore caricamento categorie per select');
             const categories = await response.json();
 
@@ -416,7 +511,7 @@ const staffApp = {
         noMenuItemsMsg.style.display = 'none';
         
         try {
-            const response = await fetch(`${staffApp.API_BASE_URL}/api/menu/all-items`);
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/menu/all-items`);
             if (!response.ok) throw new Error(`Errore HTTP menu: ${response.status} - ${await response.text()}`);
             const menuItems = await response.json();
 
@@ -513,7 +608,7 @@ const staffApp = {
         const method = mongoId ? 'PUT' : 'POST';
 
         try {
-            const response = await fetch(url, {
+            const response = await staffApp.fetchWithAuth(url, {
                 method: method,
                 body: formData 
             });
@@ -543,7 +638,7 @@ const staffApp = {
 
         try {
             // Fetch all items e trova quello corretto
-            const response = await fetch(`${staffApp.API_BASE_URL}/api/menu/all-items`);
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/menu/all-items`);
             if (!response.ok) throw new Error('Impossibile recuperare i dettagli dell\'articolo.');
             const allItems = await response.json();
             const itemToEdit = allItems.find(item => item._id === mongoId);
@@ -608,7 +703,7 @@ const staffApp = {
         const mongoId = checkbox.dataset.id; // _id
         const isChecked = checkbox.checked;
         try {
-            const itemResponse = await fetch(`${staffApp.API_BASE_URL}/api/menu/all-items`);
+            const itemResponse = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/menu/all-items`);
             if(!itemResponse.ok) throw new Error('Dettagli articolo non trovati per toggle');
             const allItems = await itemResponse.json();
             const itemToUpdate = allItems.find(item => item._id === mongoId);
@@ -631,7 +726,7 @@ const staffApp = {
             }
 
 
-            const response = await fetch(`${staffApp.API_BASE_URL}/api/menu/items/${mongoId}`, {
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/menu/items/${mongoId}`, {
                 method: 'PUT',
                 body: formData
             });
@@ -660,7 +755,7 @@ const staffApp = {
             return;
         }
         try {
-            const response = await fetch(`${staffApp.API_BASE_URL}/api/menu/items/${mongoId}`, {
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/menu/items/${mongoId}`, {
                 method: 'DELETE'
             });
             const result = await response.json();
@@ -688,7 +783,7 @@ const staffApp = {
         }
 
         try {
-            const response = await fetch(`${staffApp.API_BASE_URL}/api/orders/queue`);
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/orders/queue`);
             if (!response.ok) {
                 const errorText = await response.text();
                 throw new Error(`Errore HTTP: ${response.status} - ${errorText}`);
@@ -751,7 +846,7 @@ const staffApp = {
         // ... (codice esistente)
         const messageArea = document.getElementById('message-area-staff');
         try {
-            const response = await fetch(`${staffApp.API_BASE_URL}/api/orders/${orderId}/status`, {
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/orders/${orderId}/status`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: newStatus })

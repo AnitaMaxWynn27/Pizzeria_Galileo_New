@@ -114,6 +114,15 @@ const customerApp = {
             }
             customerApp.showView('reset-password-view'); // Mostra la vista di reset password
         } else if (customerApp.currentUser) {
+            if ((customerApp.currentUser.role === 'staff' || customerApp.currentUser.role === 'admin') && customerApp.currentUser.isActive) {
+                // Controlla che non siamo già in un tentativo di redirect infinito
+                if (window.location.pathname !== '/staff' && window.location.pathname !== '/staff.html') {
+                     console.log('Utente staff rilevato, reindirizzamento al pannello staff...');
+                     window.location.href = '/staff'; // Reindirizza al pannello staff
+                     return; // Interrompi l'init di customerApp se reindirizziamo
+                }
+            }
+            // Se è un cliente o lo staff è già su /staff (non dovrebbe eseguire questo init), carica il menu
             await customerApp.loadMenu();
             customerApp.showView('customer-order-view');
         } else {
@@ -263,11 +272,21 @@ const customerApp = {
                 customerApp.displayFieldError('login-password', data.message || 'Credenziali non valide.');
                 throw new Error(data.message || 'Errore di login');
             }
+            if (!data.user.isActive) { // Ulteriore controllo se il backend non l'ha già fatto
+                 customerApp.displayMessage('Account non attivo. Contatta l\'amministrazione.', 'error');
+                 return;
+            }
             customerApp.saveTokenAndUser(data.token, data.user);
             customerApp.updateNavUI();
-            await customerApp.loadMenu();
-            customerApp.showView('customer-order-view');
-            customerApp.displayMessage(`Login effettuato! Bentornato, ${data.user.name}!`, 'success');
+            if (data.user.role === 'staff' || data.user.role === 'admin') {
+                // Se l'utente è staff o admin, reindirizza al pannello staff
+                window.location.href = '/staff'; // Assumendo che /staff sia la route corretta
+            } else {
+                // Altrimenti, è un cliente, carica il menu e mostra la vista ordini
+                await customerApp.loadMenu();
+                customerApp.showView('customer-order-view');
+                customerApp.displayMessage(`Login effettuato! Bentornato, ${data.user.name}!`, 'success');
+            }
         } catch (error) {
             console.error("Errore login:", error.message);
         } finally {

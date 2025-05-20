@@ -12,7 +12,7 @@ const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/pizzeria';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://andrea:Nmpl152IoExZy8a7@pizzeria.5ptphrj.mongodb.net/?retryWrites=true&w=majority&appName=Pizzeria';
 const JWT_SECRET = process.env.JWT_SECRET;
 console.log("JWT_SECRET in server.js:", JWT_SECRET ? "Definito" : "NON DEFINITO!!!"); // Aggiungi questo
 if (!JWT_SECRET) {
@@ -75,6 +75,12 @@ const userSchema = new mongoose.Schema({
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, trim: true, lowercase: true },
     password: { type: String, required: true },
+    role: {
+        type: String,
+        enum: ['customer', 'staff', 'admin'], // Ruoli possibili
+        default: 'customer' // Ruolo di default per nuovi utenti
+    },
+    isActive: { type: Boolean, default: true }, // Per disattivare account
     createdAt: { type: Date, default: Date.now },
     passwordResetToken: { type: String },
     passwordResetExpires: { type: Date },
@@ -212,6 +218,23 @@ const initialMenuItemsData = [
 
 async function seedDatabase() {
     try {
+        const adminUserCount = await User.countDocuments({ role: 'admin' });
+        if (adminUserCount === 0) {
+            console.log('Nessun utente admin trovato, creo un admin di esempio...');
+            const salt = await bcrypt.genSalt(10);
+            const hashedPassword = await bcrypt.hash('adminpassword', salt); // Cambia questa password!
+            await User.create({
+                name: 'Admin Pizzeria',
+                email: 'admin@pizzeria.com', // Cambia questa email
+                password: hashedPassword,
+                role: 'admin',
+                isActive: true
+            });
+            console.log('Utente admin di esempio creato con email: admin@pizzeria.com e password: adminpassword');
+            console.log('IMPORTANTE: Cambia queste credenziali dopo il primo login o direttamente nel database!');
+        } else {
+            console.log('Utente admin già presente, skipping seeding utente admin.');
+        }
         // Seeding Categorie
         const categoryCount = await Category.countDocuments();
         if (categoryCount === 0) {
@@ -226,7 +249,7 @@ async function seedDatabase() {
         const menuItemCount = await MenuItem.countDocuments();
         if (menuItemCount === 0) {
             console.log('Nessun articolo nel menu trovato, popolo con i dati iniziali...');
-            
+
             const categoriesFromDB = await Category.find();
             const categoryMap = {};
             categoriesFromDB.forEach(cat => {
@@ -284,8 +307,29 @@ const authMiddleware = (req, res, next) => {
     }
 };
 
+// NUOVO: Middleware per autorizzare solo staff o admin
+const authorizeStaff = (req, res, next) => {
+    if (!req.user || (req.user.role !== 'staff' && req.user.role !== 'admin')) {
+        return res.status(403).json({ message: 'Accesso negato. Permessi insufficienti.' });
+    }
+    if (!req.user.isActive) { // Controlla se l'account staff è attivo
+        return res.status(403).json({ message: 'Accesso negato. Account non attivo.' });
+    }
+    next();
+};
+
+// NUOVO: Middleware per autorizzare solo admin (se serviranno distinzioni future)
+const authorizeAdmin = (req, res, next) => {
+    if (!req.user || req.user.role !== 'admin') {
+        return res.status(403).json({ message: 'Accesso negato. Solo amministratori.' });
+    }
+    if (!req.user.isActive) {
+        return res.status(403).json({ message: 'Accesso negato. Account non attivo.' });
+    }
+    next();
+};
+
 // --- Costanti e Funzioni Helper Ordini ---
-// ... (generateOrderId, calculateEstimatedWaitTime, ORDER_STATUSES, ecc. come prima)
 async function getNextOrderIdCounter() {
     const lastOrder = await Order.findOne().sort({ orderTime: -1 });
     if (lastOrder && lastOrder.orderId && lastOrder.orderId.startsWith('ORD')) {
@@ -309,27 +353,27 @@ function calculateEstimatedWaitTime(currentOrderQueueLength) {
 
 
 // --- API Endpoints Autenticazione (Aggiornati per Reset Password) ---
-// POST /api/auth/register (come prima)
+// POST /api/auth/register 
 app.post('/api/auth/register', [
-    body('name', 'Il nome è obbligatorio').not().isEmpty().trim().escape(),
-    body('email', 'Inserisci una email valida').isEmail().normalizeEmail(),
-    body('password', 'La password deve essere di almeno 6 caratteri').isLength({ min: 6 })
+    body('name').not().isEmpty().trim().escape(),
+    body('email').isEmail().normalizeEmail(),
+    body('password').isLength({ min: 6 })
 ], async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
     const { name, email, password } = req.body;
     try {
         let user = await User.findOne({ email });
-        if (user) {
-            return res.status(400).json({ errors: [{ msg: 'Utente già esistente con questa email', path: 'email' }] });
-        }
-        user = new User({ name, email, password });
+        if (user) return res.status(400).json({ errors: [{ msg: 'Utente già esistente', path: 'email' }] });
+
+        user = new User({ name, email, password, role: 'customer' }); // Ruolo 'customer' di default
         const salt = await bcrypt.genSalt(10);
         user.password = await bcrypt.hash(password, salt);
         await user.save();
-        const payload = { user: { id: user.id, name: user.name, email: user.email } };
+
+        // Includi il ruolo nel payload del token
+        const payload = { user: { id: user.id, name: user.name, email: user.email, role: user.role, isActive: user.isActive } };
         jwt.sign(payload, JWT_SECRET, { expiresIn: '5h' }, (err, token) => {
             if (err) throw err;
             res.status(201).json({ token, user: payload.user });
@@ -342,27 +386,29 @@ app.post('/api/auth/register', [
 
 // POST /api/auth/login (come prima)
 app.post('/api/auth/login', [
-    body('email', 'Inserisci una email valida').isEmail().normalizeEmail(),
-    body('password', 'La password è obbligatoria').exists()
+    body('email').isEmail().normalizeEmail(),
+    body('password').exists()
 ], async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
     const { email, password } = req.body;
     try {
         let user = await User.findOne({ email });
-        if (!user) {
-            return res.status(400).json({ message: 'Credenziali non valide' });
-        }
+        if (!user) return res.status(400).json({ message: 'Credenziali non valide' });
+
         const isMatch = await user.comparePassword(password);
-        if (!isMatch) {
-            return res.status(400).json({ message: 'Credenziali non valide' });
+        if (!isMatch) return res.status(400).json({ message: 'Credenziali non valide' });
+
+        if (!user.isActive) { // Controlla se l'account è attivo
+            return res.status(403).json({ message: 'Account disattivato. Contatta l\'amministrazione.' });
         }
-        const payload = { user: { id: user.id, name: user.name, email: user.email } };
+
+        // Includi il ruolo nel payload del token
+        const payload = { user: { id: user.id, name: user.name, email: user.email, role: user.role, isActive: user.isActive } };
         jwt.sign(payload, JWT_SECRET, { expiresIn: '5h' }, (err, token) => {
             if (err) throw err;
-            res.json({ token, user: payload.user });
+            res.json({ token, user: payload.user }); // Invia anche i dati utente con il ruolo
         });
     } catch (err) {
         console.error("Errore login:", err.message);
@@ -373,11 +419,21 @@ app.post('/api/auth/login', [
 // GET /api/auth/me (come prima)
 app.get('/api/auth/me', authMiddleware, async (req, res) => {
     try {
+        // req.user è già popolato dal token, ma facciamo un fetch per dati aggiornati se necessario
         const user = await User.findById(req.user.id).select('-password -passwordResetToken -passwordResetExpires');
-        if (!user) {
-            return res.status(404).json({ message: "Utente non trovato." });
+        if (!user || !user.isActive) { // Controlla anche se è attivo
+            return res.status(404).json({ message: "Utente non trovato o non attivo." });
         }
-        res.json(user);
+        // Restituisci i dati utente inclusi nome, email, ruolo, createdAt, isActive
+        res.json({
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            createdAt: user.createdAt,
+            isActive: user.isActive
+            // Non inviare l'intero oggetto user se contiene campi sensibili non deselezionati
+        });
     } catch (err) {
         console.error("Errore /api/auth/me:", err.message);
         res.status(500).send('Errore del server');
@@ -498,7 +554,7 @@ app.get('/api/menu', async (req, res) => {
 
 // ... (altri endpoint menu come /api/menu/all-items, POST, PUT, DELETE - potrebbero aver bisogno di gestire customizableOptions se modificabili dallo staff)
 // GET /api/menu/all-items (per staff)
-app.get('/api/menu/all-items', /* authMiddleware, TODO: Proteggere */ async (req, res) => {
+app.get('/api/menu/all-items',  authMiddleware, authorizeStaff, async (req, res) => {
     try {
         // MODIFICA QUI: Aggiungi .populate('category')
         const menuItems = await MenuItem.find().populate('category').sort({ 'category.name': 1, name: 1 });
@@ -510,7 +566,7 @@ app.get('/api/menu/all-items', /* authMiddleware, TODO: Proteggere */ async (req
 });
 
 // POST /api/menu/items
-app.post('/api/menu/items', /* authMiddleware, */ uploadMenuItemImage.single('imageFile'), [
+app.post('/api/menu/items', authMiddleware, authorizeStaff, uploadMenuItemImage.single('imageFile'), uploadMenuItemImage.single('imageFile'), [
     // body('itemId').not().isEmpty().trim().withMessage('itemId è obbligatorio'), // RIMOSSO
     body('name').not().isEmpty().trim().withMessage('Nome è obbligatorio'),
     body('category').not().isEmpty().custom(value => mongoose.Types.ObjectId.isValid(value)).withMessage('ID Categoria è obbligatorio e deve essere valido'),
@@ -559,7 +615,7 @@ app.post('/api/menu/items', /* authMiddleware, */ uploadMenuItemImage.single('im
 });
 
 // PUT /api/menu/items/:id
-app.put('/api/menu/items/:id', /* authMiddleware, */ uploadMenuItemImage.single('imageFile'), [
+app.put('/api/menu/items/:id', authMiddleware, authorizeStaff, uploadMenuItemImage.single('imageFile'), [
     // validatori opzionali
     body('name').optional().not().isEmpty().trim().withMessage('Il nome non può essere vuoto se fornito'),
     body('category').optional().custom(value => mongoose.Types.ObjectId.isValid(value)).withMessage('ID Categoria deve essere valido se fornito'),
@@ -645,7 +701,7 @@ app.put('/api/menu/items/:id', /* authMiddleware, */ uploadMenuItemImage.single(
 });
 
 // DELETE /api/menu/items/:id
-app.delete('/api/menu/items/:id', /* authMiddleware, */ async (req, res) => {
+app.delete('/api/menu/items/:id', authMiddleware, authorizeStaff,  async (req, res) => {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ message: "ID articolo non valido." });
@@ -743,7 +799,7 @@ app.get('/api/orders/my-history', authMiddleware, async (req, res) => {
 });
 
 // GET /api/orders/queue (come prima)
-app.get('/api/orders/queue', /* authMiddleware, */ async (req, res) => {
+app.get('/api/orders/queue', authMiddleware, authorizeStaff,async (req, res) => {
     try {
         const activeOrders = await Order.find({ status: { $nin: [ORDER_STATUSES.SERVITO, ORDER_STATUSES.ANNULLATO] } }).sort({ orderTime: 1 });
         res.json(activeOrders);
@@ -751,7 +807,7 @@ app.get('/api/orders/queue', /* authMiddleware, */ async (req, res) => {
 });
 
 // PUT /api/orders/:orderId/status (come prima)
-app.put('/api/orders/:orderId/status', /* authMiddleware, */ async (req, res) => {
+app.put('/api/orders/:orderId/status', authMiddleware, authorizeStaff, async (req, res) => {
     const { orderId } = req.params; const { status } = req.body;
     if (!Object.values(ORDER_STATUSES).includes(status)) return res.status(400).json({ message: 'Stato non valido.' });
     try {
@@ -882,7 +938,7 @@ app.get('/api/categories', async (req, res) => {
 });
 
 // POST /api/categories - Crea una nuova categoria
-app.post('/api/categories', /* authMiddleware, */[
+app.post('/api/categories', authMiddleware, authorizeStaff, [
     body('name').not().isEmpty().trim().withMessage('Il nome della categoria è obbligatorio')
 ], async (req, res) => {
     const errors = validationResult(req);
@@ -906,7 +962,7 @@ app.post('/api/categories', /* authMiddleware, */[
 });
 
 // PUT /api/categories/:id - Modifica una categoria esistente
-app.put('/api/categories/:id', /* authMiddleware, */[
+app.put('/api/categories/:id', authMiddleware, authorizeStaff,[
     body('name').optional().not().isEmpty().trim().withMessage('Il nome della categoria non può essere vuoto se fornito')
 ], async (req, res) => {
     const errors = validationResult(req);
@@ -946,7 +1002,7 @@ app.put('/api/categories/:id', /* authMiddleware, */[
 });
 
 // DELETE /api/categories/:id - Elimina una categoria
-app.delete('/api/categories/:id', /* authMiddleware, */ async (req, res) => {
+app.delete('/api/categories/:id', authMiddleware, authorizeStaff, async (req, res) => {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ message: "ID categoria non valido." });
