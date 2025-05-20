@@ -38,7 +38,7 @@
         .status-pronto { background-color: #c6f6d5; color: #2f855a; }
         .status-servito { background-color: #bee3f8; color: #2c5282; }
         .status-annullato { background-color: #fed7d7; color: #c53030; }
-        
+
         .form-input, .form-textarea, .form-select {
             width: 100%;
             padding: 0.65rem 0.75rem;
@@ -91,21 +91,26 @@
             cursor: pointer;
             border-bottom: 3px solid transparent;
             transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
-            color: #495057; 
+            color: #495057;
             font-size: 1rem;
-            margin-bottom: -1px;
+            margin-bottom: -1px; /* Per allineare il bordo inferiore con quello del contenitore */
         }
         .staff-nav-tab.active {
-            border-color: #007bff; 
+            border-color: #007bff; /* Blu primario per il tab attivo */
             color: #007bff;
             font-weight: 600;
         }
         .staff-nav-tab:hover:not(.active) {
-            border-color: #adb5bd; 
+            border-color: #adb5bd; /* Grigio chiaro per hover su tab non attivi */
             color: #0056b3;
         }
-        .staff-view-section { display: none; } 
-        .staff-view-section.active { display: block; }
+        .staff-view-section { display: none; }
+        .staff-view-section.active { display: block; animation: fadeInView 0.3s ease-out forwards; }
+
+        @keyframes fadeInView {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
         .form-checkbox {
             appearance: none;
@@ -125,38 +130,86 @@
         }
         .form-checkbox:checked::after {
             content: '✔';
-            font-size: 0.9rem;
+            font-size: 0.9rem; /* Adatta la dimensione del checkmark */
             color: white;
             position: absolute;
             left: 50%;
             top: 50%;
             transform: translate(-50%, -50%);
-            line-height: 1;
+            line-height: 1; /* Assicura che il checkmark sia centrato */
+        }
+        /* Stili per il modale delle categorie */
+        #category-management-modal {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        #category-management-modal.hidden {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+        #category-management-modal:not(.hidden) {
+            opacity: 1;
+            transform: scale(1);
         }
     </style>
 </head>
 <body class="p-4 md:p-8">
-    <main>
-        <section id="staff-menu-view" class="staff-view-section px-2">
+    <header class="bg-slate-700 text-white p-4 shadow-lg mb-6 sticky top-0 z-50">
+        <div class="container mx-auto flex flex-col sm:flex-row justify-between items-center">
+            <h1 class="text-2xl font-bold mb-2 sm:mb-0">Pannello Staff</h1>
+            <nav class="flex border-b border-slate-600 sm:border-none">
+                <button id="nav-tab-orders" class="staff-nav-tab active">Gestione Ordini</button>
+                <button id="nav-tab-menu" class="staff-nav-tab">Gestione Menu</button>
+                </nav>
+        </div>
+    </header>
+
+    <main class="container mx-auto">
+        <div id="message-area-staff" class="mb-4 transition-opacity duration-300 ease-out"></div>
+
+        <section id="staff-orders-view" class="staff-view-section active">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-semibold text-gray-700">Coda Ordini Attivi</h2>
+                <button id="refresh-queue-btn" class="btn btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 inline-block mr-1">
+                        <path fill-rule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.223 3.902l-.948.316a6.5 6.5 0 0011.104-4.631l.001-.067h-1.003l.07-.52zm-10.624-2.848a5.5 5.5 0 019.224-3.902l.948-.316a6.5 6.5 0 00-11.104 4.631l-.001.067h1.003l-.07.52z" clip-rule="evenodd" />
+                        <path fill-rule="evenodd" d="M16.75 10a.75.75 0 01-.75.75h-2.5a.75.75 0 010-1.5h2.5a.75.75 0 01.75.75zm-13.5 0a.75.75 0 01.75-.75h2.5a.75.75 0 010 1.5H4a.75.75 0 01-.75-.75z" clip-rule="evenodd" />
+                    </svg>
+                    Aggiorna Coda
+                </button>
+            </div>
+            <div id="order-queue-section" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                </div>
+            <p id="no-orders-staff" class="text-gray-500 text-center py-8 card" style="display: none;">Nessun ordine attivo al momento.</p>
+        </section>
+
+        <section id="staff-menu-view" class="staff-view-section">
             <h2 class="text-2xl font-semibold mb-6 text-center text-gray-700">Gestione Articoli Menu</h2>
-            <div class="text-center mb-6">
+            <div class="text-center mb-6 space-x-3">
                 <button id="toggle-add-menu-item-form-btn" class="btn btn-green">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 inline-block mr-1">
                         <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
                     </svg>
                     Aggiungi Nuovo Articolo
                 </button>
-                <button id="manage-categories-btn" class="btn btn-secondary category-management-btn ml-2">Gestisci Categorie</button>
+                <button id="manage-categories-btn" class="btn btn-secondary category-management-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 inline-block mr-1">
+                        <path d="M2.75 4A1.75 1.75 0 014.5 2.25h11A1.75 1.75 0 0117.25 4v1.552c.33.13.638.308.918.522V4A2.75 2.75 0 0014.5 1.25h-11A2.75 2.75 0 00.75 4v12A2.75 2.75 0 003.5 18.75h4.082c.004-.08.013-.158.028-.236A3.001 3.001 0 017.5 16V8A.75.75 0 018.25 7.25h3.5A.75.75 0 0112.5 8v1.638a3.001 3.001 0 01.972.312A.75.75 0 0114 9.25v-1.5A1.75 1.75 0 0012.25 6H8.25A1.75 1.75 0 006.5 7.75V16c0 .414.336.75.75.75h.082c.129.736.402 1.403.776 2H3.5A1.75 1.75 0 011.75 17V4A1.25 1.25 0 013 2.75h.5A.75.75 0 014.25 3.5v.5A.75.75 0 013.5 4H2.75z" />
+                        <path d="M18.25 12.5a2.75 2.75 0 10-5.5 0 2.75 2.75 0 005.5 0zm-4.518 1.24a.75.75 0 000 1.038l.005.005a2.25 2.25 0 103.032-3.032L15.5 13.018v.532a.75.75 0 101.5 0v-1a.75.75 0 00-.22-.53l.001-.001a.75.75 0 00-1.06-1.06L14 12.25h-.532a.75.75 0 100 1.5h1.018z" />
+                    </svg>
+                    Gestisci Categorie
+                </button>
             </div>
-            
+
             <div id="menu-item-form-container" style="display: none;" class="card p-6 md:p-8 mb-8 max-w-3xl mx-auto">
                 <h3 id="menu-item-form-title" class="text-xl font-semibold mb-6 text-gray-800">Aggiungi Articolo Menu</h3>
                 <form id="menu-item-form" class="space-y-4" enctype="multipart/form-data">
-                    <input type="hidden" id="edit-menu-item-id" value=""> <div>
+                    <input type="hidden" id="edit-menu-item-id" value="">
+                    <div>
                         <label for="menu-item-name" class="form-label">Nome Articolo:</label>
                         <input type="text" id="menu-item-name" name="name" class="form-input" required>
                     </div>
-                    
+
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label for="menu-item-category-select" class="form-label">Categoria:</label>
@@ -169,12 +222,11 @@
                             <input type="number" id="menu-item-price" name="price" class="form-input" step="0.01" min="0" required>
                         </div>
                     </div>
-                    
+
                     <div>
                         <label for="menu-item-description" class="form-label">Descrizione:</label>
                         <textarea id="menu-item-description" name="description" rows="3" class="form-textarea"></textarea>
                     </div>
-
                     <div>
                         <label for="menu-item-image-file" class="form-label">Carica Nuova Immagine (opzionale, max 5MB):</label>
                         <input type="file" id="menu-item-image-file" name="imageFile" class="form-input" accept="image/*">
@@ -184,12 +236,12 @@
                             <img id="current-image-preview" src="#" alt="Immagine attuale" class="max-h-32 rounded mt-1 border">
                         </div>
                     </div>
-                    <div>
+                     <div>
                         <label for="menu-item-image-url" class="form-label">Oppure URL Immagine (Esterna o Precedente):</label>
-                        <input type="text" id="menu-item-image-url" name="image" class="form-input" placeholder="/uploads/menu_items/default.jpg o https://...">
+                        <input type="text" id="menu-item-image-url" name="image" class="form-input" placeholder="Es. /images/margherita.png o https://...">
                         <small class="text-xs text-gray-500 mt-1 block">Se carichi un file, questo campo URL verrà usato solo se il file non viene processato o come fallback. Per rimuovere l'immagine, svuota questo campo e non caricare file.</small>
                     </div>
-                    
+
                     <div class="pt-2">
                         <label class="inline-flex items-center cursor-pointer">
                             <input type="checkbox" id="menu-item-available" name="available" value="true" class="form-checkbox" checked>
@@ -203,24 +255,29 @@
                 </form>
             </div>
 
-            <div id="category-management-modal" style="display: none;" class="card p-6 md:p-8 my-8 max-w-xl mx-auto">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-semibold text-gray-800">Gestione Categorie</h3>
-                    <button id="close-category-modal-btn" class="text-gray-500 hover:text-gray-700">&times;</button>
+            <div id="category-management-modal" style="display: none;" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center p-4 z-50 hidden">
+                <div class="card p-6 md:p-8 max-w-lg w-full transform transition-all">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xl font-semibold text-gray-800">Gestione Categorie</h3>
+                        <button id="close-category-modal-btn" class="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
+                    </div>
+                    <div id="new-category-form-container" class="mb-6">
+                        <h4 class="text-lg font-medium mb-2 text-gray-700">Aggiungi o Modifica Categoria</h4>
+                        <form id="new-category-form" class="flex items-end gap-2">
+                            <input type="hidden" id="editing-category-id" value="">
+                            <div class="flex-grow">
+                                <label for="new-category-name" class="form-label sr-only">Nome Categoria</label>
+                                <input type="text" id="new-category-name" placeholder="Nome categoria" class="form-input" required>
+                            </div>
+                             <button type="submit" id="save-category-btn" class="btn btn-green">Aggiungi</button>
+                        </form>
+                    </div>
+                    <h4 class="text-lg font-medium mb-2 text-gray-700">Categorie Esistenti</h4>
+                    <div class="max-h-60 overflow-y-auto border rounded p-3 bg-gray-50">
+                        <ul id="existing-categories-list" class="space-y-2">
+                           </ul>
+                    </div>
                 </div>
-                <div id="new-category-form-container" class="mb-6">
-                    <h4 class="text-lg font-medium mb-2">Aggiungi Nuova Categoria</h4>
-                    <form id="new-category-form" class="flex items-end gap-2">
-                        <div class="flex-grow">
-                            <label for="new-category-name" class="form-label sr-only">Nome Nuova Categoria</label>
-                            <input type="text" id="new-category-name" placeholder="Nome nuova categoria" class="form-input" required>
-                        </div>
-                        <button type="submit" class="btn btn-green">Aggiungi</button>
-                    </form>
-                </div>
-                <h4 class="text-lg font-medium mb-2">Categorie Esistenti</h4>
-                <ul id="existing-categories-list" class="list-disc pl-5 space-y-1">
-                    </ul>
             </div>
 
 
@@ -240,7 +297,7 @@
                         </tbody>
                 </table>
             </div>
-             <p id="no-menu-items-staff" class="text-gray-500 text-center py-4" style="display: none;">Nessun articolo nel menu. Aggiungine uno!</p>
+             <p id="no-menu-items-staff" class="text-gray-500 text-center py-4 card" style="display: none;">Nessun articolo nel menu. Aggiungine uno!</p>
         </section>
     </main>
 

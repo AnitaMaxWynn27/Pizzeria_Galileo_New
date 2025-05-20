@@ -523,78 +523,148 @@ app.put('/api/menu/items/:id', /* authMiddleware, */ uploadMenuItemImage.single(
     body('name', 'Nome è obbligatorio').not().isEmpty().trim(),
     body('category', 'Categoria è obbligatoria').isMongoId().withMessage('ID Categoria non valido.'),
     body('price', 'Prezzo è obbligatorio e deve essere un numero').isNumeric(),
+    // Aggiungi qui altre validazioni se necessario, es. per 'available', 'description'
 ], async (req, res) => {
+    console.log(`Richiesta PUT a /api/menu/items/${req.params.id}`); // Log iniziale della richiesta
+    console.log("Body della richiesta:", req.body);
+    if (req.file) {
+        console.log("File caricato:", req.file);
+    }
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        if (req.file) fs.unlinkSync(req.file.path);
+        console.error("Errore di validazione:", errors.array());
+        if (req.file) {
+            // Considera di eliminare il file solo se è stato effettivamente salvato e c'è un errore
+            // fs.unlinkSync(req.file.path); // Attenzione con unlinkSync in caso di errori precedenti
+        }
         return res.status(400).json({ errors: errors.array() });
     }
 
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
-        if (req.file) fs.unlinkSync(req.file.path);
+        console.error("ID Articolo non valido:", id);
+        // if (req.file) fs.unlinkSync(req.file.path); // Attenzione
         return res.status(400).json({ message: "ID Articolo non valido." });
     }
 
     try {
         const itemToUpdate = await MenuItem.findById(id);
         if (!itemToUpdate) {
-            if (req.file) fs.unlinkSync(req.file.path);
+            console.warn("Articolo non trovato per l'ID:", id);
+            // if (req.file) fs.unlinkSync(req.file.path); // Attenzione
             return res.status(404).json({ message: "Articolo non trovato." });
         }
 
-        const { name, category, price, description, available } = req.body;
-        let imagePath = itemToUpdate.image; // Mantiene l'immagine esistente di default
+        console.log("Articolo trovato:", itemToUpdate.name);
 
-        // Se il nome cambia, potresti voler rigenerare lo slug, ma questo può avere implicazioni (SEO, link).
-        // Per ora, lo slug rimane fisso dopo la creazione. Se vuoi permettere la modifica dello slug,
-        // dovrai aggiungere logica per gestire l'unicità.
-        // itemToUpdate.slug = await generateUniqueSlug(name, MenuItem); // ATTENZIONE: modifica con cautela
+        const { name, category, price, description, available, image } = req.body; // 'image' qui è l'URL dell'immagine dal form
 
+        // Logica per lo slug (se il nome cambia, lo slug dovrebbe idealmente cambiare, ma gestisci con cautela per SEO/link diretti)
+        // Se il nome è cambiato e vuoi aggiornare lo slug:
+        // if (name !== itemToUpdate.name) {
+        //     itemToUpdate.slug = await generateUniqueSlug(name, MenuItem);
+        //     console.log("Slug aggiornato a:", itemToUpdate.slug);
+        // }
         itemToUpdate.name = name;
-        itemToUpdate.category = category; // Ora è un ObjectId
-        itemToUpdate.price = price;
+        itemToUpdate.category = category; // Assicurati che 'category' sia un ObjectId valido
+        itemToUpdate.price = parseFloat(price); // Assicurati che sia un numero
         itemToUpdate.description = description !== undefined ? description : itemToUpdate.description;
-        itemToUpdate.available = (available === 'true' || available === true);
-        
+
+        // Gestione di 'available' che arriva come stringa 'true'/'false' da FormData
+        if (available === 'true') {
+            itemToUpdate.available = true;
+        } else if (available === 'false') {
+            itemToUpdate.available = false;
+        } else if (typeof available === 'boolean'){
+            itemToUpdate.available = available;
+        }
+        // Se 'available' non è presente nel FormData (es. checkbox non spuntata e nessun valore inviato),
+        // itemToUpdate.available manterrà il suo valore precedente se non lo imposti qui.
+        // FormData invierà il valore della checkbox solo se è spuntata. Se non è spuntata, il campo 'available' potrebbe non essere nel req.body.
+        // È più sicuro controllare esplicitamente:
+        // itemToUpdate.available = (req.body.available === 'true' || req.body.available === true);
+        // Se la checkbox non è spuntata, formData.get('available') sarà null.
+        // Quindi, se vuoi che una checkbox non spuntata significhi 'false':
+        itemToUpdate.available = formData.get('available') === 'true'; // formData.get('available') restituisce il valore se presente, altrimenti null
+
+
         if (req.body.customizableOptions) {
             try {
                 itemToUpdate.customizableOptions = JSON.parse(req.body.customizableOptions);
             } catch (parseError) {
                  console.warn("Opzioni personalizzabili non valide (PUT):", req.body.customizableOptions, parseError);
-                // Mantieni quelle esistenti o decidi una strategia di fallback
+                 // Mantieni quelle esistenti o decidi una strategia di fallback
             }
         }
+        console.log("Dati prima della gestione immagine:", JSON.parse(JSON.stringify(itemToUpdate)));
 
+
+        // Gestione Immagine
+        let oldImagePhysicalPath = null;
+        if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/')) {
+            oldImagePhysicalPath = path.join(__dirname, itemToUpdate.image);
+        }
 
         if (req.file) { // Se un nuovo file è caricato
-            if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/')) {
-                const oldFilePath = path.join(__dirname, itemToUpdate.image);
-                if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+            console.log("Nuovo file caricato:", req.file.filename);
+            if (oldImagePhysicalPath && fs.existsSync(oldImagePhysicalPath)) {
+                console.log("Tentativo eliminazione vecchia immagine fisica:", oldImagePhysicalPath);
+                try {
+                    fs.unlinkSync(oldImagePhysicalPath);
+                    console.log("Vecchia immagine fisica eliminata:", oldImagePhysicalPath);
+                } catch (unlinkErr) {
+                    console.error("Errore eliminazione vecchia immagine fisica:", unlinkErr);
+                    // Non bloccare l'operazione per questo, ma loggalo
+                }
             }
-            imagePath = `/uploads/menu_items/${req.file.filename}`;
-            itemToUpdate.image = imagePath;
-        } else if (req.body.image !== undefined) { // Se è stato fornito un URL testuale (vuoto o meno)
-            if (req.body.image === '' && itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/')) {
-                const oldFilePath = path.join(__dirname, itemToUpdate.image); // Immagine caricata da rimuovere
-                if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
-                itemToUpdate.image = null; // O stringa vuota
-            } else {
-                itemToUpdate.image = req.body.image; // Nuovo URL testuale o URL esistente
+            itemToUpdate.image = `/uploads/menu_items/${req.file.filename}`;
+        } else if (image !== undefined) { // Se è stato fornito un campo 'image' (URL) nel form body
+            if (image === '' && itemToUpdate.image) { // L'utente vuole rimuovere l'immagine
+                console.log("Richiesta rimozione immagine esistente.");
+                if (oldImagePhysicalPath && fs.existsSync(oldImagePhysicalPath)) {
+                    console.log("Tentativo eliminazione immagine fisica da rimuovere:", oldImagePhysicalPath);
+                     try {
+                        fs.unlinkSync(oldImagePhysicalPath);
+                        console.log("Immagine fisica da rimuovere, eliminata:", oldImagePhysicalPath);
+                    } catch (unlinkErr) {
+                        console.error("Errore eliminazione immagine fisica da rimuovere:", unlinkErr);
+                    }
+                }
+                itemToUpdate.image = null; // O stringa vuota, a seconda delle preferenze
+            } else if (image !== itemToUpdate.image) { // L'URL è cambiato (e non è un file caricato)
+                 console.log("URL immagine modificato a:", image);
+                // Se l'immagine precedente era fisica e ora si usa un URL esterno, elimina quella fisica
+                if (oldImagePhysicalPath && fs.existsSync(oldImagePhysicalPath) && !image.startsWith('/uploads/menu_items/')) {
+                    console.log("Passaggio da immagine fisica a URL, eliminazione vecchia immagine fisica:", oldImagePhysicalPath);
+                    try {
+                        fs.unlinkSync(oldImagePhysicalPath);
+                        console.log("Vecchia immagine fisica eliminata con successo.");
+                    } catch (unlinkErr) {
+                        console.error("Errore eliminazione vecchia immagine fisica:", unlinkErr);
+                    }
+                }
+                itemToUpdate.image = image;
             }
         }
-        // Se né req.file né req.body.image sono toccati, itemToUpdate.image non cambia.
+        // Se né req.file né req.body.image sono forniti o modificati significativamente, itemToUpdate.image rimane invariato.
+
+        console.log("Articolo prima del salvataggio:", JSON.parse(JSON.stringify(itemToUpdate)));
 
         await itemToUpdate.save();
+        console.log("Articolo salvato con successo.");
+
         const populatedItem = await MenuItem.findById(itemToUpdate._id).populate('category', 'name _id');
         res.json(populatedItem);
 
     } catch (error) {
-        if (req.file) fs.unlinkSync(req.file.path);
-        if (error.code === 11000) { // Potrebbe accadere se provi a cambiare lo slug a uno esistente
-            return res.status(409).json({ message: `Conflitto di dati (probabilmente slug o altro campo univoco).` });
+        console.error(`ERRORE DETTAGLIATO in PUT /api/menu/items/${id}:`, error); // Log dell'errore specifico
+        // if (req.file) { // Se c'è un errore DOPO che il file è stato caricato, potresti volerlo eliminare
+        //     try { fs.unlinkSync(req.file.path); } catch (e) { console.error("Errore durante pulizia file dopo errore:", e); }
+        // }
+        if (error.code === 11000) {
+            return res.status(409).json({ message: `Conflitto di dati (probabilmente slug o altro campo univoco).`, error: error.message });
         }
-        console.error(`Errore PUT /api/menu/items/${id}:`, error);
         res.status(500).json({ message: "Errore modifica articolo", error: error.message });
     }
 });
