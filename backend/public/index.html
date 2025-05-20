@@ -394,6 +394,45 @@
                 transform: rotate(360deg);
             }
         }
+
+        @keyframes pulseCart {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.07); /* Ombra normale .card */
+            }
+            50% {
+                transform: scale(1.03); /* Leggermente più grande */
+                box-shadow: 0 12px 24px rgba(215, 38, 56, 0.2); /* Ombra rossa più pronunciata */
+            }
+            100% {
+                transform: scale(1);
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.07);
+            }
+        }
+
+        .cart-pulse-animation {
+            animation: pulseCart 0.6s ease-out;
+        }
+
+        /* Animazione per i messaggi */
+        #message-area-customer.message-enter {
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+        }
+        #message-area-customer.message-enter-active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        #message-area-customer.message-exit {
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 0.3s ease-in, transform 0.3s ease-in;
+        }
+        #message-area-customer.message-exit-active {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
     </style>
 </head>
 

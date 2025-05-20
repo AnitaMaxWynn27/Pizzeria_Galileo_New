@@ -883,7 +883,7 @@ const customerApp = {
         }
     },
 
-    addToCart: function (idFromButton, buttonElement) { // idFromButton is now _id
+    addToCart: function (idFromButton, buttonElement) {
         const menuItem = customerApp.currentMenu.find(item => item._id === idFromButton);
         if (!menuItem) {
             console.error("Articolo del menu non trovato con ID:", idFromButton);
@@ -891,24 +891,21 @@ const customerApp = {
             return;
         }
 
-        // The identifier in the cart will be 'itemId', which will hold the product's _id
         const cartItem = customerApp.cart.find(item => item.itemId === menuItem._id);
         if (cartItem) {
             cartItem.quantity++;
         } else {
-            // Store _id as itemId in the cart for consistency with the backend (orderItemSchema.itemId)
-            // Also include originalItemId if needed by backend/order processing, though here it's the same as itemId
             customerApp.cart.push({
                 itemId: menuItem._id,
                 name: menuItem.name,
                 price: menuItem.price,
                 quantity: 1,
-                originalItemId: menuItem._id, // Assuming originalItemId is also the _id for non-customized items
-                // customizations: [] // or appropriate default if you handle customizations
+                originalItemId: menuItem._id,
             });
         }
         customerApp.updateCartDisplay();
 
+        // Feedback sul pulsante (già presente)
         if (buttonElement) {
             const originalText = "Aggiungi";
             buttonElement.innerHTML = `Aggiunto ✓`;
@@ -920,11 +917,21 @@ const customerApp = {
                 buttonElement.disabled = false;
             }, 1500);
         } else {
-            // Fallback message if buttonElement is not provided, though it usually is
             customerApp.displayMessage(`${menuItem.name} aggiunto al carrello!`, 'success', 2000);
         }
-    },
 
+        const cartSummaryEl = document.getElementById('cart-summary');
+        if (cartSummaryEl) {
+            cartSummaryEl.classList.remove('cart-pulse-animation'); // Rimuovi per riavviare l'animazione se cliccato rapidamente
+            void cartSummaryEl.offsetWidth; // Forza il reflow del browser
+            cartSummaryEl.classList.add('cart-pulse-animation');
+
+            // Rimuovi la classe dopo che l'animazione è finita per permettere di ripeterla
+            setTimeout(() => {
+                cartSummaryEl.classList.remove('cart-pulse-animation');
+            }, 600); // Durata dell'animazione (0.6s)
+        }
+    },
     removeFromCart: function (itemIdFromButton, removeAll = false) { // itemIdFromButton è _id
         const itemIndex = customerApp.cart.findIndex(item => item.itemId === itemIdFromButton);
         if (itemIndex > -1) {
@@ -1388,21 +1395,53 @@ const customerApp = {
     displayMessage: function (message, type = 'info', duration = 4000) {
         const messageArea = document.getElementById('message-area-customer');
         if (!messageArea) return;
+
+        // Rimuovi classi di animazione precedenti se presenti
+        messageArea.classList.remove('message-enter', 'message-enter-active', 'message-exit', 'message-exit-active');
+        void messageArea.offsetWidth; // Forza reflow
+
         messageArea.textContent = message;
-        messageArea.className = 'mb-6 text-center p-3 rounded-md border ';
+        // Applica classi di stile base + tipo
+        messageArea.className = 'mb-6 text-center p-3 rounded-md border '; // Classi base
         if (type === 'success') messageArea.classList.add('bg-green-100', 'text-green-700', 'border-green-300');
         else if (type === 'error') messageArea.classList.add('bg-red-100', 'text-red-700', 'border-red-300');
-        else messageArea.classList.add('bg-blue-100', 'text-blue-700', 'border-blue-300');
+        else messageArea.classList.add('bg-blue-100', 'text-blue-700', 'border-blue-300'); // Default a info
 
-        const currentTimeout = messageArea.getAttribute('data-timeout-id');
-        if (currentTimeout) clearTimeout(parseInt(currentTimeout));
+        // Animazione di entrata
+        messageArea.classList.add('message-enter');
+        requestAnimationFrame(() => { // Permette al browser di registrare la classe prima di aggiungere quella attiva
+            messageArea.classList.add('message-enter-active');
+        });
 
+        // Pulisci timeout precedente se esiste
+        const existingTimeoutId = messageArea.dataset.timeoutId;
+        if (existingTimeoutId) {
+            clearTimeout(parseInt(existingTimeoutId));
+        }
+        const existingExitTimeoutId = messageArea.dataset.exitTimeoutId;
+        if (existingExitTimeoutId) {
+            clearTimeout(parseInt(existingExitTimeoutId));
+        }
+
+        // Timeout per far scomparire il messaggio
         const timeoutId = setTimeout(() => {
-            messageArea.textContent = '';
-            messageArea.className = 'mb-6 text-center';
-            messageArea.removeAttribute('data-timeout-id');
+            messageArea.classList.remove('message-enter', 'message-enter-active');
+            messageArea.classList.add('message-exit');
+            requestAnimationFrame(() => {
+                messageArea.classList.add('message-exit-active');
+            });
+
+            // Pulisci completamente dopo l'animazione di uscita
+            const exitTimeoutId = setTimeout(() => {
+                messageArea.textContent = '';
+                messageArea.className = 'mb-6 text-center'; // Resetta classi
+                messageArea.removeAttribute('data-timeout-id');
+                messageArea.removeAttribute('data-exit-timeout-id');
+            }, 300); // Durata dell'animazione di uscita
+            messageArea.dataset.exitTimeoutId = exitTimeoutId.toString();
+
         }, duration);
-        messageArea.setAttribute('data-timeout-id', timeoutId.toString());
+        messageArea.dataset.timeoutId = timeoutId.toString();
     }
 };
 
