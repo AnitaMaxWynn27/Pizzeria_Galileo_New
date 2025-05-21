@@ -9,10 +9,15 @@ services:
     volumes:
       - ./backend:/usr/src/app
       - /usr/src/app/node_modules # Mantiene i node_modules del container
+    env_file:
+      - ./backend/.env
     environment:
       - NODE_ENV=development
       - MONGO_URI=mongodb+srv://andrea:Nmpl152IoExZy8a7@pizzeria.5ptphrj.mongodb.net/?retryWrites=true&w=majority&appName=Pizzeria
       - JWT_SECRET=qM%86EuLtjTboEwrRKq!5exwh$qASYPUUSh5qAV8Sci#mLcsgjFf43r$o2Tzu2bV%AaM^$v4UKcB3vrTkoQN5uNQPiaag$RFXPYpadQz5yCkZkqMif%&$yafrhwoT3p# 
+      - CLOUDINARY_CLOUD_NAME=dotuezdy9
+      - CLOUDINARY_API_KEY= 544986183578616
+      - CLOUDINARY_API_SECRET=V6aW78L8iUNUkPYBW_Ej-diCK2k
     depends_on:
       - mongo
     restart: unless-stopped

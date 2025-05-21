@@ -4,6 +4,7 @@ FROM node:20-alpine
 # Imposta la directory di lavoro all'interno del container
 WORKDIR /usr/src/app
 
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 # Copia i file package.json e package-lock.json
 COPY package*.json ./
 
@@ -12,6 +13,8 @@ RUN npm install
 
 # Copia il resto del codice sorgente dell'applicazione
 COPY . .
+
+USER appuser
 
 # Esponi la porta
 EXPOSE 3000

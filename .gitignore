@@ -1,0 +1,77 @@
+# Log di sistema e file specifici dell'ambiente
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+*.log
+logs
+*.log.*.[0-9] # File di log numerati (es. app.log.1)
+*.pid
+*.seed
+*.pid.lock
+
+# Dipendenze di Node.js
+# La cartella node_modules contiene tutti i pacchetti installati ed è molto pesante.
+# Viene rigenerata eseguendo 'npm install' o 'yarn install'.
+node_modules/
+
+# File delle variabili d'ambiente
+# Questi file contengono credenziali e configurazioni sensibili e NON DEVONO MAI essere committati.
+.env
+.env.*
+!.env.example  # È una buona pratica committare un file .env.example con le variabili necessarie ma senza valori sensibili.
+
+# File generati dal sistema operativo
+.DS_Store          # macOS
+Thumbs.db          # Windows
+._* # macOS
+.Spotlight-V100    # macOS
+.Trashes           # macOS
+ehthumbs.db        # Windows
+
+# File di configurazione specifici dell'IDE e dell'editor
+.idea/             # IntelliJ IDEA, WebStorm, PhpStorm, ecc.
+.vscode/           # Visual Studio Code (tranne .vscode/settings.json se condiviso dal team)
+*.sublime-project
+*.sublime-workspace
+nbproject/         # NetBeans
+*.swp              # Vim swap files
+
+# Cartelle di build e file temporanei
+dist/
+build/
+tmp/
+temp/
+*.tmp
+
+# Report di code coverage e output di test
+coverage/
+.nyc_output/
+# Se usi Jest e vuoi ignorare gli snapshot (di solito vengono committati):
+# __snapshots__/
+
+# File specifici di alcuni pacchetti npm
+.eslintcache
+.prettiercache
+
+# Cartelle di upload locali (ora che usi Cloudinary)
+# Se la cartella `backend/uploads/` conteneva immagini caricate localmente
+# e ora non è più necessaria nel repository (o vuoi evitare che venga aggiunta per errore),
+# puoi ignorarla. Se, invece, hai una struttura di cartelle o file di esempio lì dentro
+# che vuoi mantenere nel repository, modifica o commenta la riga seguente.
+# backend/uploads/
+
+# File di database locali (se ne usi per test e non vuoi committarli)
+# *.sqlite
+# *.db
+
+# Altri file specifici di build o pacchetti
+.parcel-cache/
+.next/
+.nuxt/
+# .cache # Per Gatsby e altri strumenti
+
+# Se usi typescript e vuoi ignorare i file JS generati (se non sono nella cartella dist/ o build/)
+# *.js
+# *.js.map
+# (Attenzione: questo ignorerà TUTTI i file .js, quindi usalo con cautela se il tuo codice sorgente è JS)
