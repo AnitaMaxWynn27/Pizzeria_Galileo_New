@@ -326,7 +326,7 @@ async function getNextOrderIdCounter() {
     }
     return 1; // Se non ci sono ordini o nessun formato ORDXXX valido, inizia da 1
 }
-const AVG_PREP_TIME_PER_ORDER_MINUTES = 12;
+const AVG_PREP_TIME_PER_ORDER_MINUTES = 10;
 const ORDER_STATUSES = { RICEVUTO: 'Ricevuto', IN_PREPARAZIONE: 'In Preparazione', PRONTO: 'Pronto per il Ritiro/Consegna', SERVITO: 'Servito/Consegnato', ANNULLATO: 'Annullato' };
 async function generateOrderId() {
     const currentCounter = await getNextOrderIdCounter();
