@@ -15,12 +15,6 @@ logs
 # Viene rigenerata eseguendo 'npm install' o 'yarn install'.
 node_modules/
 
-# File delle variabili d'ambiente
-# Questi file contengono credenziali e configurazioni sensibili e NON DEVONO MAI essere committati.
-.env
-.env.*
-!.env.example  # È una buona pratica committare un file .env.example con le variabili necessarie ma senza valori sensibili.
-
 # File generati dal sistema operativo
 .DS_Store          # macOS
 Thumbs.db          # Windows
