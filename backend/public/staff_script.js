@@ -34,7 +34,7 @@ const staffApp = {
         staffApp.loadTokenAndUser(); // Carica token e utente da localStorage
 
         // Controllo autenticazione e autorizzazione
-        if (!staffApp.authToken || !staffApp.currentUser || 
+        if (!staffApp.authToken || !staffApp.currentUser ||
             (staffApp.currentUser.role !== 'staff' && staffApp.currentUser.role !== 'admin')) {
             // Rimuovi l'alert per un reindirizzamento più pulito
             // alert('Accesso negato. Verrai reindirizzato al login.'); 
@@ -71,15 +71,17 @@ const staffApp = {
         document.getElementById('category-form').addEventListener('submit', staffApp.handleSaveCategory);
         document.getElementById('cancel-edit-category-btn').addEventListener('click', staffApp.resetCategoryForm);
 
+        document.getElementById('save-category-order-btn').addEventListener('click', staffApp.handleSaveCategoryOrder);
+
         const logoutButton = document.getElementById('staff-logout-btn');
         if (logoutButton) {
             logoutButton.addEventListener('click', staffApp.logout);
         }
         const staffUsernameEl = document.getElementById('staff-username');
-        if(staffUsernameEl && staffApp.currentUser) {
+        if (staffUsernameEl && staffApp.currentUser) {
             staffUsernameEl.textContent = staffApp.currentUser.name;
         }
-        
+
         // Carica i dati e mostra la sezione di default
         // Queste chiamate ora avvengono solo se l'utente è autorizzato e il body è visibile
         await staffApp.loadAndRenderMenuItems(); // Chiamata spostata per assicurare che il DOM sia pronto
@@ -109,7 +111,7 @@ const staffApp = {
         localStorage.removeItem('pizzeriaUser');
     },
 
-    logout: function() {
+    logout: function () {
         staffApp.clearTokenAndUser();
         alert('Logout effettuato.');
         window.location.href = '/'; // Reindirizza alla pagina principale
@@ -123,7 +125,7 @@ const staffApp = {
         if (staffApp.authToken) {
             headers['Authorization'] = `Bearer ${staffApp.authToken}`;
         }
-        
+
         // Per FormData, non impostare Content-Type, il browser lo fa
         if (options.body instanceof FormData) {
             delete headers['Content-Type'];
@@ -139,7 +141,7 @@ const staffApp = {
         } catch (error) {
             // Se l'errore è dovuto al logout, non mostrare un altro messaggio
             if (!error.message.includes('Sessione scaduta')) {
-                 staffApp.displayMessage(`Errore di rete o server: ${error.message}`, 'error', document.getElementById('message-area-staff'));
+                staffApp.displayMessage(`Errore di rete o server: ${error.message}`, 'error', document.getElementById('message-area-staff'));
             }
             throw error; // Rilancia l'errore per essere gestito dal chiamante
         }
@@ -221,54 +223,84 @@ const staffApp = {
         staffApp.editingCategoryId = null;
     },
 
+    // backend/public/staff_script.js
+
     loadAndRenderCategories: async function (selectAfterLoadId = null) {
         const tableBody = document.getElementById('categories-table-body');
         const noCategoriesMsg = document.getElementById('no-categories-staff');
+        const saveOrderBtn = document.getElementById('save-category-order-btn');
 
-        if (!tableBody || !noCategoriesMsg) {
-            console.error("Elementi UI per la tabella categorie non trovati.");
+        if (!tableBody || !noCategoriesMsg || !saveOrderBtn) {
+            console.error("Elementi UI per la tabella categorie non trovati in loadAndRenderCategories.");
             return;
         }
-        try {
-            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/categories`);
-            if (!response.ok) throw new Error(`Errore HTTP: ${response.status} - ${await response.text()}`);
-            const categories = await response.json();
 
-            tableBody.innerHTML = '';
-            noCategoriesMsg.style.display = 'none';
+        tableBody.innerHTML = `<tr><td colspan="4" class="text-center py-4">Caricamento categorie...</td></tr>`; // Colspan aggiornato
+        noCategoriesMsg.style.display = 'none';
+        saveOrderBtn.style.display = 'none'; // Nascondi il pulsante durante il caricamento
+
+        try {
+            // Usa fetchWithAuth per includere il token JWT
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/categories`); //
+            if (!response.ok) {
+                // Prova a leggere il messaggio di errore dal JSON, altrimenti usa il testo di stato
+                let errorMsg = `Errore HTTP: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.message || errorMsg;
+                } catch (e) { /* Non fa niente se il corpo non è JSON */ }
+                throw new Error(errorMsg);
+            }
+            const categories = await response.json(); // Le categorie sono già ordinate per 'order' dal backend
+
+            tableBody.innerHTML = ''; // Pulisci il messaggio di caricamento
 
             if (categories.length === 0) {
                 noCategoriesMsg.style.display = 'block';
+                saveOrderBtn.style.display = 'none'; // Nessuna categoria, nessun ordine da salvare
+                staffApp.populateCategorySelect(); // Popola il select nel form menu (sarà vuoto)
                 return;
             }
 
             categories.forEach(cat => {
                 const row = tableBody.insertRow();
+                row.dataset.categoryId = cat._id; // Salva l'ID della categoria sulla riga per un facile accesso
                 row.innerHTML = `
-                    <td class="px-4 py-3">${cat.name}</td>
-                    <td class="px-4 py-3">${cat.description || 'N/D'}</td>
-                    <td class="px-4 py-3 text-center space-x-1 whitespace-nowrap">
-                        <button class="btn btn-yellow btn-sm p-2 edit-category-btn" data-id="${cat._id}" title="Modifica">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" /></svg>
-                        </button>
-                        <button class="btn btn-red btn-sm p-2 delete-category-btn" data-id="${cat._id}" title="Elimina">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.58.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
-                        </button>
-                    </td>
-                `;
+                <td class="px-4 py-3">${cat.name}</td>
+                <td class="px-4 py-3">${cat.description || 'N/D'}</td>
+                <td class="px-4 py-3 text-center">
+                    <input type="number" value="${cat.order}" class="form-input category-order-input w-20 text-center" min="1" data-original-order="${cat.order}" aria-label="Ordine per ${cat.name}">
+                </td>
+                <td class="px-4 py-3 text-center space-x-1 whitespace-nowrap">
+                    <button class="btn btn-yellow btn-sm p-2 edit-category-btn" data-id="${cat._id}" title="Modifica ${cat.name}">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z" /></svg>
+                    </button>
+                    <button class="btn btn-red btn-sm p-2 delete-category-btn" data-id="${cat._id}" title="Elimina ${cat.name}">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.58.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clip-rule="evenodd" /></svg>
+                    </button>
+                </td>
+            `;
             });
 
+            // Aggiungi event listener ai pulsanti di modifica ed eliminazione
             document.querySelectorAll('.edit-category-btn').forEach(btn => btn.addEventListener('click', staffApp.handleEditCategory));
             document.querySelectorAll('.delete-category-btn').forEach(btn => btn.addEventListener('click', staffApp.handleDeleteCategory));
 
-            // Aggiorna anche il select nel form menu items
+            // Mostra il pulsante "Salva Ordine Categorie" se ci sono categorie
+            if (categories.length > 0) {
+                saveOrderBtn.style.display = 'inline-block';
+            }
+
+            // Aggiorna anche il select nel form degli articoli del menu
+            // e seleziona la categoria specificata da selectAfterLoadId se fornita (utile dopo aggiunta/modifica)
             staffApp.populateCategorySelect(selectAfterLoadId);
 
         } catch (error) {
             console.error("Errore caricamento categorie:", error);
             staffApp.displayMessage(`Errore caricamento categorie: ${error.message}`, 'error', document.getElementById('message-area-staff'));
-            if (tableBody) tableBody.innerHTML = `<tr><td colspan="3" class="text-center text-red-500 py-4">Errore caricamento categorie.</td></tr>`;
-            if (noCategoriesMsg) noCategoriesMsg.style.display = 'none';
+            if (tableBody) tableBody.innerHTML = `<tr><td colspan="4" class="text-center text-red-500 py-4">Errore caricamento categorie.</td></tr>`; // Colspan aggiornato
+            if (noCategoriesMsg) noCategoriesMsg.style.display = 'none'; // Nascondi se c'è l'errore in tabella
+            if (saveOrderBtn) saveOrderBtn.style.display = 'none';
         }
     },
 
@@ -317,6 +349,68 @@ const staffApp = {
         } catch (error) {
             console.error("Errore salvataggio categoria:", error);
             staffApp.displayMessage(`Errore salvataggio categoria: ${error.message}`, 'error', document.getElementById('message-area-staff'));
+        }
+    },
+
+    handleSaveCategoryOrder: async function () {
+        const tableBody = document.getElementById('categories-table-body');
+        const rows = tableBody.querySelectorAll('tr');
+        const updates = [];
+        let hasChanges = false;
+        const orderValues = []; // Per controllare valori duplicati
+
+        try { // Aggiunto per gestire errori di validazione interni
+            rows.forEach(row => {
+                const categoryId = row.dataset.categoryId;
+                const orderInput = row.querySelector('.category-order-input');
+                const newOrder = parseInt(orderInput.value, 10);
+                const originalOrder = parseInt(orderInput.dataset.originalOrder, 10);
+
+                if (isNaN(newOrder) || newOrder <= 0) {
+                    // Lancia un errore per interrompere e mostrare il messaggio
+                    throw new Error(`Ordine non valido per la categoria "${row.cells[0].textContent}". L'ordine deve essere un numero positivo.`);
+                }
+                orderValues.push(newOrder);
+
+                if (newOrder !== originalOrder) {
+                    hasChanges = true;
+                }
+                updates.push({ id: categoryId, order: newOrder });
+            });
+
+            // Controllo opzionale per valori di ordinamento duplicati
+            const uniqueOrderValues = new Set(orderValues);
+            if (orderValues.length !== uniqueOrderValues.size) {
+                throw new Error('I valori di ordinamento devono essere unici per ogni categoria.');
+            }
+
+            if (!hasChanges) {
+                staffApp.displayMessage('Nessuna modifica all\'ordine rilevata.', 'info', document.getElementById('message-area-staff'));
+                return;
+            }
+        } catch (validationError) { // Cattura errori di validazione (isNaN, duplicati, ecc.)
+            staffApp.displayMessage(validationError.message, 'error', document.getElementById('message-area-staff'));
+            return; // Interrompe l'esecuzione
+        }
+
+
+        try {
+            const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/categories/reorder`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.message || 'Errore durante il salvataggio dell\'ordine.');
+            }
+            staffApp.displayMessage('Ordine delle categorie aggiornato con successo!', 'success', document.getElementById('message-area-staff'));
+            await staffApp.loadAndRenderCategories(); // Ricarica per riflettere l'ordine
+            await staffApp.loadAndRenderMenuItems();   // Gli item del menu potrebbero aver bisogno di essere ricaricati se il loro display dipende dall'ordine delle categorie
+            await staffApp.populateCategorySelect(); // Aggiorna il dropdown nel form degli articoli del menu
+        } catch (error) {
+            console.error("Errore salvataggio ordine categorie:", error);
+            staffApp.displayMessage(`Errore salvataggio ordine: ${error.message}`, 'error', document.getElementById('message-area-staff'));
         }
     },
 
@@ -451,7 +545,7 @@ const staffApp = {
         const formTitle = document.getElementById('menu-item-form-title');
         const toggleButton = document.getElementById('toggle-add-menu-item-form-btn');
         const buttonTextSpan = toggleButton.querySelector('.button-text');
-        
+
         const svgPlusIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 inline-block mr-1 align-middle"><path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" /></svg>`;
         const svgMinusIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 inline-block mr-1 align-middle"><path fill-rule="evenodd" d="M4 10a.75.75 0 01.75-.75h10.5a.75.75 0 010 1.5H4.75A.75.75 0 014 10z" clip-rule="evenodd" /></svg>`;
 
@@ -465,35 +559,35 @@ const staffApp = {
             staffApp.resetMenuItemForm();
             formTitle.textContent = 'Aggiungi Nuovo Articolo';
             formContainer.style.display = 'block';
-            if (buttonTextSpan) buttonTextSpan.textContent = 'Nascondi Form Articolo'; else toggleButton.childNodes[toggleButton.childNodes.length -1].nodeValue = ' Nascondi Form Articolo';
+            if (buttonTextSpan) buttonTextSpan.textContent = 'Nascondi Form Articolo'; else toggleButton.childNodes[toggleButton.childNodes.length - 1].nodeValue = ' Nascondi Form Articolo';
             setButtonSvg(svgMinusIcon);
             toggleButton.classList.replace('btn-green', 'btn-outline-secondary');
         } else {
             formContainer.style.display = 'none';
-            if (buttonTextSpan) buttonTextSpan.textContent = 'Aggiungi Nuovo Articolo'; else toggleButton.childNodes[toggleButton.childNodes.length -1].nodeValue = ' Aggiungi Nuovo Articolo';
+            if (buttonTextSpan) buttonTextSpan.textContent = 'Aggiungi Nuovo Articolo'; else toggleButton.childNodes[toggleButton.childNodes.length - 1].nodeValue = ' Aggiungi Nuovo Articolo';
             setButtonSvg(svgPlusIcon);
             toggleButton.classList.replace('btn-outline-secondary', 'btn-green');
         }
     },
 
-    resetMenuItemForm: function() {
+    resetMenuItemForm: function () {
         const form = document.getElementById('menu-item-form');
         if (form) form.reset();
-        
+
         document.getElementById('edit-menu-item-id').value = ''; // Questo è il MongoDB _id
         document.getElementById('menu-item-form-title').textContent = 'Aggiungi Nuovo Articolo';
         document.getElementById('save-menu-item-btn').textContent = 'Salva Articolo';
         document.getElementById('cancel-edit-menu-item-btn').style.display = 'none';
         // Il campo per 'itemId' (quello manuale) è stato rimosso dall'HTML
-        
+
         const imagePreviewContainer = document.getElementById('current-image-preview-container');
         const imagePreview = document.getElementById('current-image-preview');
         if (imagePreviewContainer) imagePreviewContainer.style.display = 'none';
         if (imagePreview) imagePreview.src = '#';
-        
+
         const imageUrlInput = document.getElementById('menu-item-image-url');
-        if(imageUrlInput) imageUrlInput.value = '';
-        
+        if (imageUrlInput) imageUrlInput.value = '';
+
         staffApp.editingMenuItemId = null;
         staffApp.populateCategorySelect();
     },
@@ -509,7 +603,7 @@ const staffApp = {
         // Aggiornato colspan a 5 dato che una colonna è stata rimossa
         tableBody.innerHTML = `<tr><td colspan="5" class="text-center py-4">Caricamento articoli menu...</td></tr>`;
         noMenuItemsMsg.style.display = 'none';
-        
+
         try {
             const response = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/menu/all-items`);
             if (!response.ok) throw new Error(`Errore HTTP menu: ${response.status} - ${await response.text()}`);
@@ -548,7 +642,7 @@ const staffApp = {
                         <span class="ml-2 text-sm">${item.available ? 'Sì' : 'No'}</span>
                     </label>`;
                 const checkbox = cellDisponibile.querySelector('.toggle-availability-cb');
-                if(checkbox) checkbox.addEventListener('change', staffApp.handleToggleAvailability);
+                if (checkbox) checkbox.addEventListener('change', staffApp.handleToggleAvailability);
 
 
                 let cellAzioni = row.insertCell();
@@ -578,17 +672,17 @@ const staffApp = {
         }
     },
 
-     handleSaveMenuItem: async function(event) {
+    handleSaveMenuItem: async function (event) {
         event.preventDefault();
         const form = document.getElementById('menu-item-form');
         const mongoId = document.getElementById('edit-menu-item-id').value; // Questo è _id
-        
+
         const formData = new FormData(form);
         // Il campo 'itemId' (manuale) è stato rimosso dal form, quindi non sarà in formData
-        
+
         if (!formData.get('category')) {
-             staffApp.displayMessage('Seleziona una categoria per l\'articolo.', 'error', document.getElementById('message-area-staff'));
-             return;
+            staffApp.displayMessage('Seleziona una categoria per l\'articolo.', 'error', document.getElementById('message-area-staff'));
+            return;
         }
         if (!document.getElementById('menu-item-available').checked) {
             formData.set('available', 'false');
@@ -601,27 +695,27 @@ const staffApp = {
             formData.delete('imageFile'); // Non inviare imageFile se non selezionato
         }
         // L'URL immagine (formData.get('image')) sarà inviato se presente nel campo di testo
-        
-        const url = mongoId 
-            ? `${staffApp.API_BASE_URL}/api/menu/items/${mongoId}` 
+
+        const url = mongoId
+            ? `${staffApp.API_BASE_URL}/api/menu/items/${mongoId}`
             : `${staffApp.API_BASE_URL}/api/menu/items`;
         const method = mongoId ? 'PUT' : 'POST';
 
         try {
             const response = await staffApp.fetchWithAuth(url, {
                 method: method,
-                body: formData 
+                body: formData
             });
             const result = await response.json();
             if (!response.ok) {
-                const errorMessage = Array.isArray(result.errors) 
-                    ? result.errors.map(err => err.msg || JSON.stringify(err)).join(', ') 
+                const errorMessage = Array.isArray(result.errors)
+                    ? result.errors.map(err => err.msg || JSON.stringify(err)).join(', ')
                     : (result.message || `Errore HTTP: ${response.status}`);
                 throw new Error(errorMessage);
             }
-            
+
             staffApp.displayMessage(`Articolo menu ${mongoId ? 'modificato' : 'aggiunto'} con successo!`, 'success', document.getElementById('message-area-staff'));
-            staffApp.toggleMenuItemForm(); 
+            staffApp.toggleMenuItemForm();
             await staffApp.loadAndRenderMenuItems();
             staffApp.resetMenuItemForm(); // Assicura che il form sia pulito
         } catch (error) {
@@ -631,7 +725,7 @@ const staffApp = {
     },
 
 
-    handleEditMenuItem: async function(event) {
+    handleEditMenuItem: async function (event) {
         const button = event.currentTarget;
         const mongoId = button.dataset.id; // Questo è _id
         staffApp.editingMenuItemId = mongoId;
@@ -647,7 +741,7 @@ const staffApp = {
                 staffApp.displayMessage('Articolo non trovato per la modifica.', 'error', document.getElementById('message-area-staff'));
                 return;
             }
-            
+
             const formContainer = document.getElementById('menu-item-form-container');
             const formTitle = document.getElementById('menu-item-form-title');
             const toggleButton = document.getElementById('toggle-add-menu-item-form-btn');
@@ -658,7 +752,7 @@ const staffApp = {
             document.getElementById('edit-menu-item-id').value = itemToEdit._id;
             // Il campo per l'itemId manuale è stato rimosso dall'HTML
             document.getElementById('menu-item-name').value = itemToEdit.name;
-            
+
             // Categoria: itemToEdit.category è l'ID o l'oggetto popolato. Il select si aspetta l'ID.
             const categoryIdToSelect = (itemToEdit.category && typeof itemToEdit.category === 'object') ? itemToEdit.category._id : itemToEdit.category;
             await staffApp.populateCategorySelect(categoryIdToSelect);
@@ -680,15 +774,15 @@ const staffApp = {
             document.getElementById('menu-item-available').checked = itemToEdit.available;
             document.getElementById('save-menu-item-btn').textContent = 'Salva Modifiche';
             document.getElementById('cancel-edit-menu-item-btn').style.display = 'inline-block';
-            
+
             if (formContainer.style.display === 'none' || formContainer.style.display === '') {
                 formContainer.style.display = 'block';
-                if (buttonTextSpan) buttonTextSpan.textContent = 'Nascondi Form Articolo'; else toggleButton.childNodes[toggleButton.childNodes.length -1].nodeValue = ' Nascondi Form Articolo';
-                 const svgMinusIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 inline-block mr-1 align-middle"><path fill-rule="evenodd" d="M4 10a.75.75 0 01.75-.75h10.5a.75.75 0 010 1.5H4.75A.75.75 0 014 10z" clip-rule="evenodd" /></svg>`;
-                 let currentSvg = toggleButton.querySelector('svg');
-                 if (currentSvg) currentSvg.remove();
-                 toggleButton.insertAdjacentHTML('afterbegin', svgMinusIcon);
-                 toggleButton.classList.replace('btn-green', 'btn-outline-secondary');
+                if (buttonTextSpan) buttonTextSpan.textContent = 'Nascondi Form Articolo'; else toggleButton.childNodes[toggleButton.childNodes.length - 1].nodeValue = ' Nascondi Form Articolo';
+                const svgMinusIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 inline-block mr-1 align-middle"><path fill-rule="evenodd" d="M4 10a.75.75 0 01.75-.75h10.5a.75.75 0 010 1.5H4.75A.75.75 0 014 10z" clip-rule="evenodd" /></svg>`;
+                let currentSvg = toggleButton.querySelector('svg');
+                if (currentSvg) currentSvg.remove();
+                toggleButton.insertAdjacentHTML('afterbegin', svgMinusIcon);
+                toggleButton.classList.replace('btn-green', 'btn-outline-secondary');
             }
             formContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -704,7 +798,7 @@ const staffApp = {
         const isChecked = checkbox.checked;
         try {
             const itemResponse = await staffApp.fetchWithAuth(`${staffApp.API_BASE_URL}/api/menu/all-items`);
-            if(!itemResponse.ok) throw new Error('Dettagli articolo non trovati per toggle');
+            if (!itemResponse.ok) throw new Error('Dettagli articolo non trovati per toggle');
             const allItems = await itemResponse.json();
             const itemToUpdate = allItems.find(item => item._id === mongoId);
 
@@ -721,7 +815,7 @@ const staffApp = {
             formData.append('image', itemToUpdate.image || '');
             formData.append('available', isChecked.toString());
             // Invia customizableOptions se esistono e se il backend le gestisce per PUT
-             if (itemToUpdate.customizableOptions) {
+            if (itemToUpdate.customizableOptions) {
                 formData.append('customizableOptions', JSON.stringify(itemToUpdate.customizableOptions));
             }
 
@@ -738,7 +832,7 @@ const staffApp = {
             staffApp.displayMessage(`Disponibilità di '${result.name}' aggiornata.`, 'success', document.getElementById('message-area-staff'));
             const labelSpan = checkbox.closest('label').querySelector('span');
             if (labelSpan) labelSpan.textContent = isChecked ? 'Sì' : 'No';
-            
+
         } catch (error) {
             console.error("Errore aggiornamento disponibilità:", error);
             staffApp.displayMessage(`Errore aggiornamento disponibilità: ${error.message}`, 'error', document.getElementById('message-area-staff'));

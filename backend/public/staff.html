@@ -246,7 +246,8 @@
 
 <body class="p-4 md:p-8" style="display: none;">
     <header class="text-center mb-6 flex justify-between items-center">
-        <div></div> <div>
+        <div></div>
+        <div>
             <h1 class="text-4xl md:text-5xl font-bold text-blue-700">Pizzeria Da Galileo</h1>
             <p class="text-lg text-gray-600">Pannello di Gestione Staff</p>
         </div>
@@ -304,22 +305,22 @@
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                        <label for="menu-item-category-select" class="form-label">Categoria:</label>
-                        <div class="flex items-center space-x-2">
-                            <select id="menu-item-category-select" name="category" class="form-select flex-grow"
-                                required>
-                                <option value="">Caricamento categorie...</option>
-                            </select>
-                            <button type="button" id="show-quick-add-category-btn" class="btn btn-sm btn-secondary p-2"
-                                title="Aggiungi nuova categoria">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
-                                    class="w-5 h-5">
-                                    <path
-                                        d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-                                </svg>
-                            </button>
+                            <label for="menu-item-category-select" class="form-label">Categoria:</label>
+                            <div class="flex items-center space-x-2">
+                                <select id="menu-item-category-select" name="category" class="form-select flex-grow"
+                                    required>
+                                    <option value="">Caricamento categorie...</option>
+                                </select>
+                                <button type="button" id="show-quick-add-category-btn"
+                                    class="btn btn-sm btn-secondary p-2" title="Aggiungi nuova categoria">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
+                                        class="w-5 h-5">
+                                        <path
+                                            d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
-                    </div>
                         <div>
                             <label for="menu-item-price" class="form-label">Prezzo (€):</label>
                             <input type="number" id="menu-item-price" name="price" class="form-input" step="0.01"
@@ -366,7 +367,7 @@
                         <button type="submit" id="save-menu-item-btn" class="btn btn-primary w-full sm:w-auto">Salva
                             Articolo</button>
                     </div>
-                    
+
                 </form>
             </div>
 
@@ -383,7 +384,7 @@
                         </tr>
                     </thead>
                     <tbody id="menu-items-table-body">
-                        </tbody>
+                    </tbody>
                 </table>
             </div>
             <p id="no-menu-items-staff" class="text-gray-500 text-center py-4" style="display: none;">Nessun articolo
@@ -424,12 +425,16 @@
                         <tr>
                             <th>Nome</th>
                             <th>Descrizione</th>
-                            <th class="text-center">Azioni</th>
+                            <th class="text-center w-32">Ordinamento</th>
+                            <th class="text-center w-48">Azioni</th>
                         </tr>
                     </thead>
                     <tbody id="categories-table-body">
                     </tbody>
                 </table>
+            </div>
+            <div class="text-center my-4">
+                <button id="save-category-order-btn" class="btn btn-primary">Salva Ordine Categorie</button>
             </div>
             <p id="no-categories-staff" class="text-gray-500 text-center py-4" style="display: none;">Nessuna categoria
                 trovata.</p>

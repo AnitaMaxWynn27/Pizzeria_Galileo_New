@@ -104,8 +104,8 @@ const User = mongoose.model('User', userSchema);
 
 const categorySchema = new mongoose.Schema({
     name: { type: String, required: true, unique: true, trim: true },
-    description: { type: String, trim: true, default: '' }, // Descrizione opzionale
-    // Potresti aggiungere altri campi se necessario, es: order (per l'ordinamento)
+    description: { type: String, trim: true, default: '' },
+    order: { type: Number, default: 0, index: true }, // Nuovo campo per l'ordinamento
     createdAt: { type: Date, default: Date.now }
 });
 const Category = mongoose.model('Category', categorySchema);
@@ -159,10 +159,9 @@ const orderSchema = new mongoose.Schema({
 const Order = mongoose.model('Order', orderSchema);
 
 const initialCategories = [
-    { name: 'Pizze Rosse', description: 'Le classiche pizze con base pomodoro.' },
-    { name: 'Pizze Bianche', description: 'Pizze senza base pomodoro, con mozzarella e altri ingredienti.' },
-    { name: 'Bibite', description: 'Bevande analcoliche e birre.' }
-    // Aggiungi altre categorie se necessario, es. Dessert
+    { name: 'Pizze Rosse', description: 'Le classiche pizze con base pomodoro.', order: 1 },
+    { name: 'Pizze Bianche', description: 'Pizze senza base pomodoro, con mozzarella e altri ingredienti.', order: 2 },
+    { name: 'Bibite', description: 'Bevande analcoliche e birre.', order: 3 }
 ];
 
 const initialMenuItemsData = [
@@ -530,20 +529,70 @@ app.post('/api/auth/reset-password/:token', [
     }
 });
 
+app.put('/api/categories/reorder', authMiddleware, authorizeStaff, [
+    body().isArray().withMessage('L\'input deve essere un array di aggiornamenti per le categorie.'),
+    body('*.id').isMongoId().withMessage('Ogni aggiornamento deve avere un ID valido.'),
+    body('*.order').isNumeric().withMessage('Ogni aggiornamento deve avere un valore numerico per l\'ordine.')
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+    }
+
+    const updates = req.body; // Es: [{id: "mongoId1", order: 1}, {id: "mongoId2", order: 2}]
+
+    try {
+        const bulkOps = updates.map(update => ({
+            updateOne: {
+                filter: { _id: update.id },
+                update: { $set: { order: parseInt(update.order, 10) } }
+            }
+        }));
+
+        if (bulkOps.length > 0) {
+            await Category.bulkWrite(bulkOps);
+        }
+
+        res.json({ message: 'Ordine delle categorie aggiornato con successo.' });
+    } catch (error) {
+        console.error("Errore PUT /api/categories/reorder:", error);
+        res.status(500).json({ message: "Errore durante l'aggiornamento dell'ordine delle categorie", error: error.message });
+    }
+});
 
 // --- API Endpoints Menu (come prima, con riferimento a customizableOptions) ---
 app.get('/api/menu', async (req, res) => {
     // Questa rotta non cambia, invia solo gli URL delle immagini
     try {
-        const menuItems = await MenuItem.find({ available: true }).populate('category');
+        const menuItems = await MenuItem.find({ available: true })
+            .populate('category')
+            .lean(); // Usa .lean() per manipolazioni JavaScript più veloci
+
+        // Ordina gli articoli prima per l'ordine della categoria, poi per il nome della categoria, infine per il nome dell'articolo
+        menuItems.sort((a, b) => {
+            const catAOrder = a.category ? a.category.order : Infinity;
+            const catBOrder = b.category ? b.category.order : Infinity;
+            const catAName = a.category ? a.category.name : ''; // Per spareggio se ordini uguali
+            const catBName = b.category ? b.category.name : '';
+
+            if (catAOrder !== catBOrder) {
+                return catAOrder - catBOrder;
+            }
+            if (catAName.localeCompare(catBName) !== 0) {
+                return catAName.localeCompare(catBName);
+            }
+            return a.name.localeCompare(b.name);
+        });
+
         res.json(menuItems.map(item => ({
             _id: item._id,
             name: item.name,
             category: item.category ? item.category.name : 'Senza Categoria',
             _categoryId: item.category ? item.category._id : null,
+            _categoryOrder: item.category ? item.category.order : Infinity, // Esponi l'ordine della categoria
             price: item.price,
             description: item.description,
-            image: item.image, // Questo sarà l'URL Cloudinary
+            image: item.image,
             available: item.available,
             customizableOptions: item.customizableOptions
         })));
@@ -709,7 +758,7 @@ app.put('/api/menu/items/:id', authMiddleware, authorizeStaff, uploadMenuItemIma
 });
 
 // DELETE /api/menu/items/:id
-app.delete('/api/menu/items/:id', authMiddleware, authorizeStaff,  async (req, res, next) => { // Aggiunto next
+app.delete('/api/menu/items/:id', authMiddleware, authorizeStaff, async (req, res, next) => { // Aggiunto next
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ message: "ID articolo non valido." });
@@ -940,7 +989,7 @@ app.delete('/api/users/me/favorites/:favoriteId', authMiddleware, async (req, re
 // GET /api/categories - Recupera tutte le categorie
 app.get('/api/categories', async (req, res) => {
     try {
-        const categories = await Category.find().sort({ name: 1 });
+        const categories = await Category.find().sort({ order: 1, name: 1 }); // Ordina per 'order', poi per 'name'
         res.json(categories);
     } catch (error) {
         res.status(500).json({ message: "Errore recupero categorie", error: error.message });
@@ -961,7 +1010,10 @@ app.post('/api/categories', authMiddleware, authorizeStaff, [
         if (existingCategory) {
             return res.status(409).json({ message: `La categoria '${name}' esiste già.` });
         }
-        const newCategory = new Category({ name, description });
+        const highestOrderCategory = await Category.findOne().sort({ order: -1 });
+        const nextOrder = highestOrderCategory ? highestOrderCategory.order + 1 : 1;
+
+        const newCategory = new Category({ name, description, order: nextOrder }); // Assegna 'order'
         await newCategory.save();
         res.status(201).json(newCategory);
     } catch (error) {
@@ -1079,21 +1131,21 @@ app.use((err, req, res, next) => {
         // Altri codici di errore Multer: LIMIT_FIELD_KEY, LIMIT_FIELD_VALUE, LIMIT_FIELD_COUNT, LIMIT_FILE_COUNT, LIMIT_PART_COUNT
         return res.status(400).json({ message: message, code: err.code });
     }
-    
+
     if (err.message && err.message.includes('Solo file immagine sono permessi!')) {
-         return res.status(400).json({ 
-             errors: [{ path: 'imageFile', msg: 'Formato file non valido. Solo immagini permesse.' }] 
-         });
+        return res.status(400).json({
+            errors: [{ path: 'imageFile', msg: 'Formato file non valido. Solo immagini permesse.' }]
+        });
     }
 
     if (res.headersSent) {
         return next(err);
     }
-    
-    res.status(err.status || 500).json({ 
+
+    res.status(err.status || 500).json({
         message: err.message || 'Si è verificato un errore interno al server.',
         // Opzionale: non esporre dettagli dell'errore in produzione a meno che non sia sicuro
-        ...(process.env.NODE_ENV === 'development' && { errorDetails: err.toString() }) 
+        ...(process.env.NODE_ENV === 'development' && { errorDetails: err.toString() })
     });
 });
 

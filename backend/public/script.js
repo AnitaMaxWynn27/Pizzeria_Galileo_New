@@ -554,25 +554,44 @@ const customerApp = {
         const filtersContainer = document.getElementById('menu-category-filters');
         if (!filtersContainer || customerApp.currentMenu.length === 0) return;
 
-        // 'item.category' ora è il NOME della categoria, come inviato dal backend
-        // Se hai aggiunto '_categoryId' al backend, potresti usarlo per un filtraggio più robusto
-        // basato su ID, ma per la visualizzazione useremo il nome.
-        const categories = ['All', ...new Set(customerApp.currentMenu.map(item => item.category))]; // item.category è già il nome
+        // Crea una mappa per ottenere categorie uniche con il loro ordine
+        const uniqueCategoriesMap = new Map();
+        customerApp.currentMenu.forEach(item => {
+            if (!uniqueCategoriesMap.has(item.category)) { // item.category è il nome
+                uniqueCategoriesMap.set(item.category, { name: item.category, order: item._categoryOrder });
+            }
+        });
 
-        filtersContainer.innerHTML = '';
-        categories.forEach(categoryName => { // Ora categoryName è direttamente il nome
+        // Converti in array e ordina
+        const sortedUniqueCategories = Array.from(uniqueCategoriesMap.values()).sort((a, b) => a.order - b.order);
+
+        filtersContainer.innerHTML = ''; // Pulisci i filtri esistenti
+
+        // Aggiungi il pulsante "All"
+        const allButton = document.createElement('button');
+        allButton.textContent = 'All';
+        allButton.className = 'btn btn-filter';
+        if ('All' === customerApp.currentCategoryFilter) {
+            allButton.classList.add('active');
+        }
+        allButton.addEventListener('click', () => {
+            customerApp.currentCategoryFilter = 'All';
+            filtersContainer.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
+            allButton.classList.add('active');
+            customerApp.applyFiltersAndRenderMenu();
+        });
+        filtersContainer.appendChild(allButton);
+
+        // Aggiungi i pulsanti per ogni categoria ordinata
+        sortedUniqueCategories.forEach(catInfo => {
             const button = document.createElement('button');
-            button.textContent = categoryName;
+            button.textContent = catInfo.name;
             button.className = 'btn btn-filter';
-            // Se i filtri si basano sul nome, va bene così.
-            // Se vuoi filtrare per ID, dovresti mappare i nomi agli ID e memorizzarli
-            // oppure assicurarti che currentCategoryFilter usi l'ID se hai _categoryId.
-            // Per ora, manteniamo il filtro basato sul nome come sembra essere nell'immagine.
-            if (categoryName === customerApp.currentCategoryFilter) {
+            if (catInfo.name === customerApp.currentCategoryFilter) {
                 button.classList.add('active');
             }
             button.addEventListener('click', () => {
-                customerApp.currentCategoryFilter = categoryName; // Filtra per nome
+                customerApp.currentCategoryFilter = catInfo.name;
                 filtersContainer.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
                 customerApp.applyFiltersAndRenderMenu();
@@ -604,14 +623,20 @@ const customerApp = {
         customerApp.renderMenu(searchTerm !== '' || customerApp.currentCategoryFilter !== 'All');
     },
 
+
     renderMenu: function (isFilteredRender = false) {
         const menuContainer = document.getElementById('menu-categories');
         const noMenuItemsMessage = document.getElementById('no-menu-items-message');
-        if (!menuContainer || !noMenuItemsMessage) return;
+        if (!menuContainer || !noMenuItemsMessage) {
+            console.error("Elementi UI per il menu non trovati in renderMenu");
+            return;
+        }
 
         menuContainer.innerHTML = ''; // Pulisci prima di renderizzare
         noMenuItemsMessage.style.display = 'none';
 
+        // customerApp.filteredMenu è derivato da customerApp.currentMenu,
+        // che è già ordinato per _categoryOrder dal backend (GET /api/menu)
         const itemsToRender = customerApp.filteredMenu;
 
         if (itemsToRender.length === 0) {
@@ -624,45 +649,61 @@ const customerApp = {
             return;
         }
 
-        const categories = {};
+        // Utilizza una Map per raggruppare gli articoli per categoria.
+        // La Map preserverà l'ordine di inserimento delle chiavi (nomi delle categorie),
+        // che riflette l'ordinamento ricevuto dal backend.
+        const categoriesMap = new Map();
         itemsToRender.forEach(item => {
-            // item.category è il nome della categoria, item._id è l'ID MongoDB
-            if (!categories[item.category]) categories[item.category] = [];
-            categories[item.category].push(item);
+            // item.category è il nome della categoria
+            if (!categoriesMap.has(item.category)) {
+                categoriesMap.set(item.category, []);
+            }
+            categoriesMap.get(item.category).push(item);
         });
 
-        for (const categoryName in categories) {
+        // Itera sulla Map per creare le sezioni delle categorie nell'ordine corretto
+        for (const [categoryName, itemsInCategory] of categoriesMap) {
             const categoryDiv = document.createElement('div');
-            categoryDiv.className = 'mb-8'; // Aggiungi un po' di spazio sotto ogni categoria
-            // Se il filtro è "All" o ci sono più categorie filtrate (o è un render non filtrato con categorie)
-            if (customerApp.currentCategoryFilter === 'All' || Object.keys(categories).length > 1) {
+            categoryDiv.className = 'mb-8'; // Spazio sotto ogni categoria
+
+            // Mostra il titolo della categoria solo se il filtro non è specifico per una categoria
+            // o se ci sono più categorie risultanti dal filtro.
+            if (customerApp.currentCategoryFilter === 'All' || categoriesMap.size > 1) {
                 categoryDiv.innerHTML = `<h3 class="text-3xl font-semibold mb-6 text-gray-800">${categoryName}</h3>`;
             }
+
             const itemsGrid = document.createElement('div');
             itemsGrid.className = 'grid md:grid-cols-2 xl:grid-cols-3 gap-6';
 
-            categories[categoryName].forEach(item => { // item here has _id
+            itemsInCategory.forEach(item => { // item qui ha _id, name, price, ecc.
                 const itemCard = document.createElement('div');
-                itemCard.className = 'card menu-item-card p-5 flex flex-col justify-between';
+                itemCard.className = 'card menu-item-card p-5 flex flex-col justify-between'; //
+                // L'immagine di placeholder o l'immagine effettiva
+                const imageUrl = item.image || 'https://placehold.co/300x200/E2E8F0/4A5568?text=Pizza!';
+                // Gestione errore caricamento immagine direttamente nell'HTML
+                const imageErrorHandling = "this.onerror=null; this.src='https://placehold.co/300x200/E2E8F0/4A5568?text=Immagine+non+disponibile';";
+
                 itemCard.innerHTML = `
                 <div>
-                    <img src="${item.image || 'https://placehold.co/300x200/E2E8F0/4A5568?text=Pizza!'}" alt="${item.name}" class="w-full rounded-lg mb-4 shadow-md aspect-video object-cover" onerror="this.onerror=null;this.src='https://placehold.co/300x200/E2E8F0/4A5568?text=Immagine+non+disponibile';">
+                    <img src="${imageUrl}" alt="${item.name}" class="w-full rounded-lg mb-4 shadow-md aspect-video object-cover" onerror="${imageErrorHandling}">
                     <h4 class="item-name mb-1">${item.name}</h4>
                     <p class="item-description mb-3">${item.description || ''}</p>
                 </div>
                 <div class="flex justify-between items-center mt-auto">
                     <p class="item-price">€ ${parseFloat(item.price).toFixed(2)}</p>
-                    <button class="btn btn-primary btn-sm add-to-cart-btn" data-id="${item._id}" aria-label="Aggiungi ${item.name} al carrello">Aggiungi</button> 
-                </div>`; // data-id is item._id
+                    <button class="btn btn-primary btn-sm add-to-cart-btn" data-id="${item._id}" aria-label="Aggiungi ${item.name} al carrello">Aggiungi</button>
+                </div>`;
                 itemsGrid.appendChild(itemCard);
             });
             categoryDiv.appendChild(itemsGrid);
             menuContainer.appendChild(categoryDiv);
         }
 
+        // Aggiungi event listener ai pulsanti "Aggiungi al carrello"
         document.querySelectorAll('.add-to-cart-btn').forEach(button => {
             button.addEventListener('click', (e) => {
-                customerApp.addToCart(e.currentTarget.dataset.id, e.currentTarget); // Passes _id
+                // Passa l'_id dell'articolo e il pulsante stesso per il feedback visivo
+                customerApp.addToCart(e.currentTarget.dataset.id, e.currentTarget);
             });
         });
     },
