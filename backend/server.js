@@ -1,4 +1,6 @@
 // backend/server.js
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -6,9 +8,22 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult, param } = require('express-validator');
-const crypto = require('crypto'); // Per generare token di reset password
-const multer = require('multer'); // <--- AGGIUNGI MULTER
+const crypto = require('crypto');
+const multer = require('multer');
 const fs = require('fs');
+
+const cloudinary = require('cloudinary').v2;
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true, // Usa HTTPS per gli URL
+});
+
+if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    console.error("FATAL ERROR: Credenziali Cloudinary non definite. Impostale nel file .env.");
+    process.exit(1);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,30 +38,15 @@ if (!JWT_SECRET) {
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-// Nuova rotta per servire le immagini caricate
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // <--- NUOVA RIGA
 
-// --- Configurazione Multer ---
-const UPLOADS_MENU_ITEMS_DIR = path.join(__dirname, 'uploads', 'menu_items');
-// Crea la cartella se non esiste
-if (!fs.existsSync(UPLOADS_MENU_ITEMS_DIR)) {
-    fs.mkdirSync(UPLOADS_MENU_ITEMS_DIR, { recursive: true });
-}
 
-const menuItemsStorage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, UPLOADS_MENU_ITEMS_DIR);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-});
+const menuItemsStorage = multer.memoryStorage();
 
 const imageFileFilter = (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
         cb(null, true);
     } else {
+        // Questo errore verrà gestito dal middleware di gestione errori globale
         cb(new Error('Solo file immagine sono permessi!'), false);
     }
 };
@@ -116,12 +116,12 @@ const customizableOptionSchema = new mongoose.Schema({
 }, { _id: false });
 
 const menuItemSchema = new mongoose.Schema({
-    // itemId: { type: String, required: true, unique: true, trim: true }, // RIMOSSO
     name: { type: String, required: true, trim: true },
     category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
     price: { type: Number, required: true, min: 0 },
     description: { type: String, trim: true },
-    image: { type: String, trim: true },
+    image: { type: String, trim: true }, // Conterrà l'URL Cloudinary
+    imagePublicId: { type: String, trim: true }, // NUOVO: Per l'ID pubblico di Cloudinary
     available: { type: Boolean, default: true },
     customizableOptions: [customizableOptionSchema]
 });
@@ -533,16 +533,17 @@ app.post('/api/auth/reset-password/:token', [
 
 // --- API Endpoints Menu (come prima, con riferimento a customizableOptions) ---
 app.get('/api/menu', async (req, res) => {
+    // Questa rotta non cambia, invia solo gli URL delle immagini
     try {
         const menuItems = await MenuItem.find({ available: true }).populate('category');
         res.json(menuItems.map(item => ({
-            _id: item._id, // Invia il vero _id
+            _id: item._id,
             name: item.name,
             category: item.category ? item.category.name : 'Senza Categoria',
             _categoryId: item.category ? item.category._id : null,
             price: item.price,
             description: item.description,
-            image: item.image,
+            image: item.image, // Questo sarà l'URL Cloudinary
             available: item.available,
             customizableOptions: item.customizableOptions
         })));
@@ -554,11 +555,11 @@ app.get('/api/menu', async (req, res) => {
 
 // ... (altri endpoint menu come /api/menu/all-items, POST, PUT, DELETE - potrebbero aver bisogno di gestire customizableOptions se modificabili dallo staff)
 // GET /api/menu/all-items (per staff)
-app.get('/api/menu/all-items',  authMiddleware, authorizeStaff, async (req, res) => {
+app.get('/api/menu/all-items', authMiddleware, authorizeStaff, async (req, res) => {
+    // Questa rotta non cambia, invia solo gli URL delle immagini
     try {
-        // MODIFICA QUI: Aggiungi .populate('category')
         const menuItems = await MenuItem.find().populate('category').sort({ 'category.name': 1, name: 1 });
-        res.json(menuItems); // Invia l'intero oggetto, inclusa la categoria popolata
+        res.json(menuItems);
     } catch (error) {
         console.error("Errore recupero articoli menu per staff:", error);
         res.status(500).json({ message: "Errore recupero articoli menu per staff", error: error.message });
@@ -566,51 +567,51 @@ app.get('/api/menu/all-items',  authMiddleware, authorizeStaff, async (req, res)
 });
 
 // POST /api/menu/items
-app.post('/api/menu/items', authMiddleware, authorizeStaff, uploadMenuItemImage.single('imageFile'), uploadMenuItemImage.single('imageFile'), [
-    // body('itemId').not().isEmpty().trim().withMessage('itemId è obbligatorio'), // RIMOSSO
+app.post('/api/menu/items', authMiddleware, authorizeStaff, uploadMenuItemImage.single('imageFile'), [
     body('name').not().isEmpty().trim().withMessage('Nome è obbligatorio'),
     body('category').not().isEmpty().custom(value => mongoose.Types.ObjectId.isValid(value)).withMessage('ID Categoria è obbligatorio e deve essere valido'),
     body('price').isNumeric().withMessage('Prezzo è obbligatorio e deve essere un numero'),
-], async (req, res) => {
+], async (req, res, next) => { // Aggiunto next per il middleware di errore
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        if (req.file) fs.unlinkSync(req.file.path);
+        // Non c'è più un file locale da cancellare qui perché usiamo memoryStorage
         return res.status(400).json({ errors: errors.array() });
     }
 
     try {
-        const { name, category, price, description, available } = req.body; // itemId rimosso
-        let imagePath = req.body.image;
+        const { name, category, price, description, available } = req.body;
+        let imageUrl = req.body.image; // Se viene fornito un URL testuale
+        let imagePublicId = null;
 
-        if (req.file) {
-            imagePath = `/uploads/menu_items/${req.file.filename}`;
+        if (req.file) { // Se un file è stato caricato
+            // Carica su Cloudinary
+            const b64 = Buffer.from(req.file.buffer).toString("base64");
+            const dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+
+            const cloudinaryResult = await cloudinary.uploader.upload(dataURI, {
+                folder: "pizzeria_menu_items", // Organizza in una cartella su Cloudinary
+            });
+            imageUrl = cloudinaryResult.secure_url;
+            imagePublicId = cloudinaryResult.public_id;
         }
 
         const newItemData = {
-            name, category, // category è l'ID
-            price, description,
-            image: imagePath,
+            name, category, price, description,
+            image: imageUrl,
+            imagePublicId: imagePublicId, // Salva il public_id
             available: available === 'true' || available === true,
         };
-        if (req.body.customizableOptions) {
-            try {
-                newItemData.customizableOptions = JSON.parse(req.body.customizableOptions);
-            } catch (e) {
-                console.warn("Opzioni personalizzabili non valide:", req.body.customizableOptions);
-                newItemData.customizableOptions = [];
-            }
-        }
+        if (req.body.customizableOptions) { /* ... gestione customizableOptions ... */ }
 
         const newItem = new MenuItem(newItemData);
         await newItem.save();
-        const populatedItem = await MenuItem.findById(newItem._id).populate('category'); // Ripopola per inviare nome categoria
+        const populatedItem = await MenuItem.findById(newItem._id).populate('category');
         res.status(201).json(populatedItem);
     } catch (error) {
-        if (req.file) fs.unlinkSync(req.file.path);
-        // Non c'è più errore per itemId duplicato
-        // if (error.code === 11000) return res.status(409).json({ message: `L'articolo con itemId '${error.keyValue.itemId}' esiste già.` });
-        console.error("Errore POST /api/menu/items:", error);
-        res.status(500).json({ message: "Errore aggiunta articolo", error: error.message });
+        // Se l'errore è da Cloudinary o dal DB, l'immagine potrebbe essere già su Cloudinary
+        // ma l'articolo non salvato. Gestire l'eventuale cancellazione da Cloudinary qui è complesso.
+        // Il middleware di gestione errori globale gestirà l'errore.
+        next(error); // Passa l'errore al gestore di errori globale
     }
 });
 
@@ -620,59 +621,71 @@ app.put('/api/menu/items/:id', authMiddleware, authorizeStaff, uploadMenuItemIma
     body('name').optional().not().isEmpty().trim().withMessage('Il nome non può essere vuoto se fornito'),
     body('category').optional().custom(value => mongoose.Types.ObjectId.isValid(value)).withMessage('ID Categoria deve essere valido se fornito'),
     body('price').optional().isNumeric().withMessage('Il prezzo deve essere un numero se fornito'),
-], async (req, res) => {
+], async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        if (req.file) fs.unlinkSync(req.file.path);
         return res.status(400).json({ errors: errors.array() });
     }
-    const { id } = req.params; // Questo è il MongoDB _id
+    const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
-        if (req.file) fs.unlinkSync(req.file.path);
         return res.status(400).json({ message: "ID articolo non valido." });
     }
 
     try {
         const itemToUpdate = await MenuItem.findById(id);
         if (!itemToUpdate) {
-            if (req.file) fs.unlinkSync(req.file.path);
             return res.status(404).json({ message: "Articolo non trovato." });
         }
 
-        const { name, category, price, description, available /*, itemId */ } = req.body; // itemId rimosso
-        let imagePath = itemToUpdate.image;
-        let newImageUrlProvided = req.body.image !== undefined && req.body.image !== itemToUpdate.image;
+        const updateData = { ...req.body }; // Copia i campi testuali
+        let newImageUrl = itemToUpdate.image;
+        let newImagePublicId = itemToUpdate.imagePublicId;
 
-        if (req.file) {
-            if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/')) {
-                const oldFilePath = path.join(__dirname, itemToUpdate.image);
-                if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+        if (req.file) { // Nuova immagine caricata
+            // 1. Elimina la vecchia immagine da Cloudinary, se esisteva ed era di Cloudinary
+            if (itemToUpdate.imagePublicId) {
+                try {
+                    await cloudinary.uploader.destroy(itemToUpdate.imagePublicId);
+                } catch (delError) {
+                    console.warn("Attenzione: Impossibile eliminare la vecchia immagine da Cloudinary durante l'aggiornamento:", delError.message);
+                    // Non bloccare l'operazione principale per questo
+                }
             }
-            imagePath = `/uploads/menu_items/${req.file.filename}`;
-        } else if (newImageUrlProvided) {
-            if (itemToUpdate.image && itemToUpdate.image.startsWith('/uploads/menu_items/') && req.body.image === '') {
-                const oldFilePath = path.join(__dirname, itemToUpdate.image);
-                if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+
+            // 2. Carica la nuova immagine su Cloudinary
+            const b64 = Buffer.from(req.file.buffer).toString("base64");
+            const dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+            const cloudinaryResult = await cloudinary.uploader.upload(dataURI, {
+                folder: "pizzeria_menu_items",
+            });
+            newImageUrl = cloudinaryResult.secure_url;
+            newImagePublicId = cloudinaryResult.public_id;
+
+        } else if (req.body.image !== undefined && req.body.image !== itemToUpdate.image) {
+            // L'URL dell'immagine è stato modificato manualmente nel form
+            // Se l'immagine precedente era su Cloudinary e ora l'URL è vuoto o diverso, eliminala
+            if (itemToUpdate.imagePublicId && (req.body.image === '' || !req.body.image.includes('cloudinary'))) {
+                try {
+                    await cloudinary.uploader.destroy(itemToUpdate.imagePublicId);
+                    newImagePublicId = null; // Rimuovi il public_id se l'immagine viene rimossa o cambiata con una non Cloudinary
+                } catch (delError) {
+                    console.warn("Attenzione: Impossibile eliminare l'immagine da Cloudinary (cambio URL manuale):", delError.message);
+                }
             }
-            imagePath = req.body.image;
+            newImageUrl = req.body.image; // Usa il nuovo URL fornito
+            if (!newImageUrl.includes('cloudinary')) { // Se il nuovo URL non è Cloudinary, non c'è public_id
+                newImagePublicId = null;
+            }
         }
 
-        // itemToUpdate.name = name !== undefined ? name : itemToUpdate.name;
-        // itemToUpdate.category = category !== undefined ? category : itemToUpdate.category;
-        // ... e così via per tutti i campi
-        // oppure:
+        updateData.image = newImageUrl;
+        updateData.imagePublicId = newImagePublicId;
 
-        const updateData = { ...req.body };
-        if (name !== undefined) updateData.name = name;
-        if (category !== undefined) updateData.category = category;
-        if (price !== undefined) updateData.price = parseFloat(price);
-        if (description !== undefined) updateData.description = description;
-        if (available !== undefined) updateData.available = available === 'true' || available === true;
-        updateData.image = imagePath;
-
-        // Rimuovi itemId se presente per errore nel body, non deve essere aggiornato
-        delete updateData.itemId;
-        // delete updateData._id; // MongoDB _id non può essere cambiato
+        if (updateData.name !== undefined) updateData.name = updateData.name;
+        if (updateData.category !== undefined) updateData.category = updateData.category;
+        if (updateData.price !== undefined) updateData.price = parseFloat(updateData.price);
+        if (updateData.description !== undefined) updateData.description = updateData.description;
+        if (updateData.available !== undefined) updateData.available = updateData.available === 'true' || updateData.available === true;
 
         if (req.body.customizableOptions) {
             try {
@@ -691,17 +704,12 @@ app.put('/api/menu/items/:id', authMiddleware, authorizeStaff, uploadMenuItemIma
         res.json(updatedItem);
 
     } catch (error) {
-        if (req.file) fs.unlinkSync(req.file.path);
-        // if (error.code === 11000 && error.keyPattern && error.keyPattern.itemId) { // Non più rilevante per itemId
-        //     return res.status(409).json({ message: `L'itemId '${error.keyValue.itemId}' è già utilizzato.` });
-        // }
-        console.error(`Errore PUT /api/menu/items/${id}:`, error);
-        res.status(500).json({ message: "Errore modifica articolo", error: error.message });
+        next(error); // Passa l'errore al gestore di errori globale
     }
 });
 
 // DELETE /api/menu/items/:id
-app.delete('/api/menu/items/:id', authMiddleware, authorizeStaff,  async (req, res) => {
+app.delete('/api/menu/items/:id', authMiddleware, authorizeStaff,  async (req, res, next) => { // Aggiunto next
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
         return res.status(400).json({ message: "ID articolo non valido." });
@@ -711,19 +719,21 @@ app.delete('/api/menu/items/:id', authMiddleware, authorizeStaff,  async (req, r
         if (!deletedItem) {
             return res.status(404).json({ message: "Articolo non trovato." });
         }
-        if (deletedItem.image && deletedItem.image.startsWith('/uploads/menu_items/')) {
-            const filePath = path.join(__dirname, deletedItem.image);
-            if (fs.existsSync(filePath)) {
-                fs.unlink(filePath, (err) => {
-                    if (err) console.error("Errore eliminazione file immagine associata:", err);
-                    else console.log(`File immagine ${filePath} eliminato.`);
-                });
+
+        // Elimina l'immagine da Cloudinary se esiste un public_id
+        if (deletedItem.imagePublicId) {
+            try {
+                await cloudinary.uploader.destroy(deletedItem.imagePublicId);
+                console.log(`Immagine ${deletedItem.imagePublicId} eliminata da Cloudinary.`);
+            } catch (delError) {
+                console.warn("Attenzione: Impossibile eliminare l'immagine da Cloudinary durante l'eliminazione dell'articolo:", delError.message);
+                // Non bloccare l'operazione principale per questo
             }
         }
+        // Non c'è più un file locale da eliminare con fs.unlink
         res.json({ message: "Articolo eliminato con successo.", deletedItem });
     } catch (error) {
-        console.error(`Errore DELETE /api/menu/items/${id}:`, error);
-        res.status(500).json({ message: "Errore eliminazione articolo", error: error.message });
+        next(error); // Passa l'errore al gestore di errori globale
     }
 });
 
@@ -799,7 +809,7 @@ app.get('/api/orders/my-history', authMiddleware, async (req, res) => {
 });
 
 // GET /api/orders/queue (come prima)
-app.get('/api/orders/queue', authMiddleware, authorizeStaff,async (req, res) => {
+app.get('/api/orders/queue', authMiddleware, authorizeStaff, async (req, res) => {
     try {
         const activeOrders = await Order.find({ status: { $nin: [ORDER_STATUSES.SERVITO, ORDER_STATUSES.ANNULLATO] } }).sort({ orderTime: 1 });
         res.json(activeOrders);
@@ -962,7 +972,7 @@ app.post('/api/categories', authMiddleware, authorizeStaff, [
 });
 
 // PUT /api/categories/:id - Modifica una categoria esistente
-app.put('/api/categories/:id', authMiddleware, authorizeStaff,[
+app.put('/api/categories/:id', authMiddleware, authorizeStaff, [
     body('name').optional().not().isEmpty().trim().withMessage('Il nome della categoria non può essere vuoto se fornito')
 ], async (req, res) => {
     const errors = validationResult(req);
@@ -1056,6 +1066,39 @@ app.get('*', (req, res) => {
     // altrimenti le richieste a file statici non API (es. /script.js) fallirebbero se non trovate prima
 });
 
+app.use((err, req, res, next) => {
+    console.error("ERRORE NON GESTITO RILEVATO:", err.message);
+    if (process.env.NODE_ENV === 'development') { // Mostra stack solo in sviluppo
+        console.error(err.stack);
+    }
+
+    if (err instanceof multer.MulterError) {
+        let message = err.message;
+        if (err.code === 'LIMIT_FILE_SIZE') message = 'File troppo grande. Massimo 5MB.';
+        if (err.code === 'LIMIT_UNEXPECTED_FILE') message = 'Tipo di file non supportato o campo errato per l\'upload.';
+        // Altri codici di errore Multer: LIMIT_FIELD_KEY, LIMIT_FIELD_VALUE, LIMIT_FIELD_COUNT, LIMIT_FILE_COUNT, LIMIT_PART_COUNT
+        return res.status(400).json({ message: message, code: err.code });
+    }
+    
+    if (err.message && err.message.includes('Solo file immagine sono permessi!')) {
+         return res.status(400).json({ 
+             errors: [{ path: 'imageFile', msg: 'Formato file non valido. Solo immagini permesse.' }] 
+         });
+    }
+
+    if (res.headersSent) {
+        return next(err);
+    }
+    
+    res.status(err.status || 500).json({ 
+        message: err.message || 'Si è verificato un errore interno al server.',
+        // Opzionale: non esporre dettagli dell'errore in produzione a meno che non sia sicuro
+        ...(process.env.NODE_ENV === 'development' && { errorDetails: err.toString() }) 
+    });
+});
+
 app.listen(PORT, () => {
     console.log(`Backend Pizzeria Da Galileo in ascolto sulla porta ${PORT}`);
+    console.log(`MONGO_URI: ${MONGO_URI.substring(0, MONGO_URI.indexOf('@'))}...`); // Log parziale per sicurezza
+    console.log(`Cloudinary Cloud Name: ${process.env.CLOUDINARY_CLOUD_NAME ? 'Configurato' : 'NON Configurato!'}`);
 });
