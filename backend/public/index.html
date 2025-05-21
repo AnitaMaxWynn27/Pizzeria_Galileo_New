@@ -356,7 +356,7 @@
             position: absolute;
             top: 50%;
             right: 0;
-            transform: translateY(-50%);
+            transform: translateY(calc(-50% - 8px));
             display: flex;
             align-items: center;
         }
@@ -398,12 +398,17 @@
         @keyframes pulseCart {
             0% {
                 transform: scale(1);
-                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.07); /* Ombra normale .card */
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.07);
+                /* Ombra normale .card */
             }
+
             50% {
-                transform: scale(1.03); /* Leggermente più grande */
-                box-shadow: 0 12px 24px rgba(215, 38, 56, 0.2); /* Ombra rossa più pronunciata */
+                transform: scale(1.03);
+                /* Leggermente più grande */
+                box-shadow: 0 12px 24px rgba(215, 38, 56, 0.2);
+                /* Ombra rossa più pronunciata */
             }
+
             100% {
                 transform: scale(1);
                 box-shadow: 0 8px 16px rgba(0, 0, 0, 0.07);
@@ -420,18 +425,31 @@
             transform: translateY(-10px);
             transition: opacity 0.3s ease-out, transform 0.3s ease-out;
         }
+
         #message-area-customer.message-enter-active {
             opacity: 1;
             transform: translateY(0);
         }
+
         #message-area-customer.message-exit {
             opacity: 1;
             transform: translateY(0);
             transition: opacity 0.3s ease-in, transform 0.3s ease-in;
         }
+
         #message-area-customer.message-exit-active {
             opacity: 0;
             transform: translateY(-10px);
+        }
+
+        .form-input-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .quantity-input-group .btn-sm {
+            padding-top: 0.3rem;
+            padding-bottom: 0.3rem;
         }
     </style>
 </head>

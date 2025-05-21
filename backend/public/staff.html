@@ -245,18 +245,17 @@
 </head>
 
 <body class="p-4 md:p-8" style="display: none;">
-    <header class="text-center mb-6 flex justify-between items-center">
-        <div></div>
+    <header class="relative mb-6 py-4 text-center">
         <div>
             <h1 class="text-4xl md:text-5xl font-bold text-blue-700">Pizzeria Da Galileo</h1>
             <p class="text-lg text-gray-600">Pannello di Gestione Staff</p>
         </div>
-        <div class="text-right">
-            <span id="staff-username" class="text-sm text-gray-700 mr-2">Caricamento...</span>
-            <button id="staff-logout-btn" class="btn btn-sm btn-outline-secondary">Logout</button>
+        <div class="absolute top-4 right-4 text-right sm:top-1/2 sm:transform sm:-translate-y-1/2">
+            <span id="staff-username"
+                class="block text-sm text-gray-700 mb-1 sm:inline sm:mr-2 sm:mb-0">Caricamento...</span>
+            <button id="staff-logout-btn" class="btn btn-sm btn-outline-secondary mt-1 sm:mt-0">Logout</button>
         </div>
     </header>
-
     <div id="message-area-staff" class="mb-6 text-center"></div>
 
     <nav class="flex justify-center border-b border-gray-300 mb-8">

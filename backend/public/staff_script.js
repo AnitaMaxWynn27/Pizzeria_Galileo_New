@@ -113,7 +113,6 @@ const staffApp = {
 
     logout: function () {
         staffApp.clearTokenAndUser();
-        alert('Logout effettuato.');
         window.location.href = '/'; // Reindirizza alla pagina principale
     },
 
@@ -957,11 +956,7 @@ const staffApp = {
         }
     },
 
-    /**
-     * Visualizza un messaggio temporaneo nell'area designata.
-     */
     displayMessage: function (message, type = 'info', areaElement, duration = 4000) {
-        // ... (codice esistente)
         if (!areaElement) {
             console.warn("Area messaggi non fornita per displayMessage. Messaggio:", message);
             return;

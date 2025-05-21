@@ -192,7 +192,7 @@ const initialMenuItemsData = [
     {
         name: 'Boscaiola', categoryName: 'Pizze Bianche', price: 10.00,
         description: 'Mozzarella, Salsiccia fresca, Funghi porcini',
-        image: '/images/Boscaiola.png', // Assumendo che tu abbia questa immagine in public/images
+        image: '/images/Boscaiola.png',
         available: true,
     },
     {
@@ -204,7 +204,7 @@ const initialMenuItemsData = [
     {
         name: 'Coca Cola', categoryName: 'Bibite', price: 2.50,
         description: 'Lattina 33cl',
-        image: '/images/CocaCola.jpg', // Nota: questa è .jpg come da tuo screenshot
+        image: '/images/CocaCola.jpg',
         available: true,
     },
     {
@@ -217,23 +217,7 @@ const initialMenuItemsData = [
 
 async function seedDatabase() {
     try {
-        const adminUserCount = await User.countDocuments({ role: 'admin' });
-        if (adminUserCount === 0) {
-            console.log('Nessun utente admin trovato, creo un admin di esempio...');
-            const salt = await bcrypt.genSalt(10);
-            const hashedPassword = await bcrypt.hash('adminpassword', salt); // Cambia questa password!
-            await User.create({
-                name: 'Admin Pizzeria',
-                email: 'admin@pizzeria.com', // Cambia questa email
-                password: hashedPassword,
-                role: 'admin',
-                isActive: true
-            });
-            console.log('Utente admin di esempio creato con email: admin@pizzeria.com e password: adminpassword');
-            console.log('IMPORTANTE: Cambia queste credenziali dopo il primo login o direttamente nel database!');
-        } else {
-            console.log('Utente admin già presente, skipping seeding utente admin.');
-        }
+
         // Seeding Categorie
         const categoryCount = await Category.countDocuments();
         if (categoryCount === 0) {
@@ -259,7 +243,7 @@ async function seedDatabase() {
                 const categoryId = categoryMap[item.categoryName];
                 if (!categoryId) {
                     console.warn(`Categoria "${item.categoryName}" non trovata per l'articolo "${item.name}". L'articolo sarà saltato.`);
-                    return null; // Salta questo articolo se la categoria non esiste
+                    return null;
                 }
                 return {
                     name: item.name,
@@ -330,12 +314,17 @@ const authorizeAdmin = (req, res, next) => {
 
 // --- Costanti e Funzioni Helper Ordini ---
 async function getNextOrderIdCounter() {
-    const lastOrder = await Order.findOne().sort({ orderTime: -1 });
+    // Trova l'ordine con l'orderId lessicograficamente più alto.
+    // troverà l'ordine con il suffisso numerico più alto.
+    const lastOrder = await Order.findOne().sort({ orderId: -1 }); // MODIFICA QUI: ordina per orderId decrescente
+
     if (lastOrder && lastOrder.orderId && lastOrder.orderId.startsWith('ORD')) {
         const lastIdNum = parseInt(lastOrder.orderId.substring(3), 10);
-        if (!isNaN(lastIdNum)) return lastIdNum + 1;
+        if (!isNaN(lastIdNum)) {
+            return lastIdNum + 1;
+        }
     }
-    return 1;
+    return 1; // Se non ci sono ordini o nessun formato ORDXXX valido, inizia da 1
 }
 const AVG_PREP_TIME_PER_ORDER_MINUTES = 12;
 const ORDER_STATUSES = { RICEVUTO: 'Ricevuto', IN_PREPARAZIONE: 'In Preparazione', PRONTO: 'Pronto per il Ritiro/Consegna', SERVITO: 'Servito/Consegnato', ANNULLATO: 'Annullato' };
@@ -607,7 +596,7 @@ app.get('/api/menu', async (req, res) => {
 app.get('/api/menu/all-items', authMiddleware, authorizeStaff, async (req, res) => {
     // Questa rotta non cambia, invia solo gli URL delle immagini
     try {
-        const menuItems = await MenuItem.find().populate('category').sort({ 'category.name': 1, name: 1 });
+        const menuItems = await MenuItem.find().populate('category').sort({ _id: -1 });
         res.json(menuItems);
     } catch (error) {
         console.error("Errore recupero articoli menu per staff:", error);
@@ -713,17 +702,14 @@ app.put('/api/menu/items/:id', authMiddleware, authorizeStaff, uploadMenuItemIma
         } else if (req.body.image !== undefined && req.body.image !== itemToUpdate.image) {
             // L'URL dell'immagine è stato modificato manualmente nel form
             // Se l'immagine precedente era su Cloudinary e ora l'URL è vuoto o diverso, eliminala
-            if (itemToUpdate.imagePublicId && (req.body.image === '' || !req.body.image.includes('cloudinary'))) {
+            if (itemToUpdate.imagePublicId) { // Se c'era una vecchia immagine Cloudinary
                 try {
                     await cloudinary.uploader.destroy(itemToUpdate.imagePublicId);
-                    newImagePublicId = null; // Rimuovi il public_id se l'immagine viene rimossa o cambiata con una non Cloudinary
+                    console.log(`Vecchia immagine Cloudinary ${itemToUpdate.imagePublicId} eliminata.`);
                 } catch (delError) {
-                    console.warn("Attenzione: Impossibile eliminare l'immagine da Cloudinary (cambio URL manuale):", delError.message);
+                    console.warn("Attenzione: Impossibile eliminare la vecchia immagine da Cloudinary (cambio URL manuale):", delError.message);
                 }
-            }
-            newImageUrl = req.body.image; // Usa il nuovo URL fornito
-            if (!newImageUrl.includes('cloudinary')) { // Se il nuovo URL non è Cloudinary, non c'è public_id
-                newImagePublicId = null;
+                newImagePublicId = null; // Rimuovi sempre il public_id se l'URL immagine cambia e non è un nuovo upload
             }
         }
 

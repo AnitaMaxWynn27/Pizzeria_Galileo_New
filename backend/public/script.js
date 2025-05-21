@@ -126,16 +126,22 @@ const customerApp = {
             customerApp.showView('reset-password-view'); // Mostra la vista di reset password
         } else if (customerApp.currentUser) {
             if ((customerApp.currentUser.role === 'staff' || customerApp.currentUser.role === 'admin') && customerApp.currentUser.isActive) {
-                // Controlla che non siamo già in un tentativo di redirect infinito
                 if (window.location.pathname !== '/staff' && window.location.pathname !== '/staff.html') {
                     console.log('Utente staff rilevato, reindirizzamento al pannello staff...');
-                    window.location.href = '/staff'; // Reindirizza al pannello staff
-                    return; // Interrompi l'init di customerApp se reindirizziamo
+                    window.location.href = '/staff';
+                    return; // Interrompi init di customerApp
+                }
+                // Se è già su /staff, non fare nulla qui (staff_script.js gestirà)
+            } else { // È un cliente
+                await customerApp.loadMenu(); // Carica il menu solo se è un cliente
+                customerApp.showView('customer-order-view');
+                // Popola il nome cliente se loggato
+                const customerNameInput = document.getElementById('customer-name');
+                if (customerNameInput && customerApp.currentUser) {
+                    customerNameInput.value = customerApp.currentUser.name;
+                    customerNameInput.disabled = true;
                 }
             }
-            // Se è un cliente o lo staff è già su /staff (non dovrebbe eseguire questo init), carica il menu
-            await customerApp.loadMenu();
-            customerApp.showView('customer-order-view');
         } else {
             customerApp.showView('login-view');
         }
